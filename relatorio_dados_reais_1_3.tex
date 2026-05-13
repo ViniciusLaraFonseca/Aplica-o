@@ -1,0 +1,1612 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{5}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{pdflscape}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{wrapfig}
+\usepackage{colortbl}
+\usepackage{tabu}
+\usepackage{threeparttable}
+\usepackage{threeparttablex}
+\usepackage[normalem]{ulem}
+\usepackage{makecell}
+\usepackage{xcolor}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Analise de Obitos Neonatais Precoces em Minas Gerais},
+  pdfauthor={Vinicius Fonseca},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Analise de Obitos Neonatais Precoces em Minas Gerais}
+\usepackage{etoolbox}
+\makeatletter
+\providecommand{\subtitle}[1]{% add subtitle to \maketitle
+  \apptocmd{\@title}{\par {\large #1 \par}}{}{}
+}
+\makeatother
+\subtitle{Modelos Bayesianos Espaco-Estados --- Comparacao de
+Especificacoes}
+\author{Vinicius Fonseca}
+\date{13 de abril de 2026}
+
+\begin{document}
+\maketitle
+
+{
+\setcounter{tocdepth}{3}
+\tableofcontents
+}
+\section{Introducao}\label{introducao}
+
+Este relatorio apresenta os resultados do ajuste de modelos Bayesianos
+Poisson log-lineares para contagens de obitos neonatais precoces nas 75
+microrregioes de Minas Gerais, no periodo de 2000 a 2022 (\(A = 75\),
+\(T = 23\), \(K = 4\) clusters, \(p = 3\) covariaveis).
+
+\subsection{Estrutura hierarquica do
+modelo}\label{estrutura-hierarquica-do-modelo}
+
+O modelo e definido pelos seguintes estagios:
+
+\textbf{Estagio 1 --- verossimilhanca:} \[
+Y_{i,t} \mid \mu_{i,t} \;\sim\; \text{Poisson}(\mu_{i,t}), \qquad
+i = 1,\ldots,A,\quad t = 1,\ldots,T.
+\]
+
+\textbf{Estagio 2 --- preditor log-linear:} \[
+\log(\mu_{i,t}) = \log(\lambda_{\cdot}) + \log(E_{i,t}) + \log(\varepsilon_{i(\cdot)})
+                  + \mathbf{x}_{i,t}^\top \boldsymbol{\beta} \;[+ s_i],
+\] onde \(s_i\) e o efeito espacial ICAR (presente apenas no modelo
+espacial) e o fator residual de risco \(\varepsilon\) e definido
+conforme a especificacao.
+
+\textbf{Estagio 3 --- intercepto/processo latente (seis
+especificacoes):}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Especificacao & Estrutura de $\lambda$ & Estrutura de $\varepsilon$ \\
+\midrule
+Intercepto fixo &
+  $\beta_0 \in \mathbb{R}$ (escalar) &
+  $\varepsilon_i = 1 - \sum_k h_{ik}\gamma_k$ \\
+Intercepto temporal i.i.d. &
+  $\beta_{0t} \sim \mathrm{N}(0,1)$ &
+  $\varepsilon_i = 1 - \sum_k h_{ik}\gamma_k$ \\
+Lambda dinamico regional &
+  $\lambda_{i,t} \sim \mathrm{Ga}(a_{i,t},b_{i,t})$ via FFBS &
+  $\varepsilon_i = 1 - \sum_k h_{ik}\gamma_k$ \\
+Lambda compartilhado &
+  $\lambda_t \sim \mathrm{Ga}(a_t,b_t)$ via FFBS &
+  $\varepsilon_i = 1 - \sum_k h_{ik}\gamma_k$ \\
+Gamma temporal &
+  $\lambda_t \sim \mathrm{Ga}(a_t,b_t)$ via FFBS &
+  $\varepsilon_{i,t} = 1 - \sum_k h_{ik}\gamma_{k,t}$ \\
+Intercepto temp.\ + Gamma temp. &
+  $\beta_{0t} \sim \mathrm{N}(0,1)$ &
+  $\varepsilon_{i,t} = 1 - \sum_k h_{ik}\gamma_{k,t}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O processo Gamma-Poisson com desconto \(w\) segue a recursao: \[
+\lambda_{\cdot} \mid D_{t-1} \sim \mathrm{Ga}(w\,a_{t-1},\; w\,b_{t-1}),
+\] com atualizacao bayesiana \(a_t = w\,a_{t-1} + \sum_i Y_{i,t}\) e
+\(b_t = w\,b_{t-1} + \sum_i g_{i,t}\), onde
+\(g_{i,t} = E_{i,t}\,\varepsilon_{i(t)}\,\exp(\mathbf{x}_{i,t}^\top\boldsymbol{\beta}[+s_i])\).
+
+Para as especificacoes com \textbf{\(\gamma_{k,t}\) temporal} (Gamma
+Temporal e Intercepto Temporal + Gamma Temporal), cada coluna
+\(\boldsymbol{\gamma}_{\cdot t}\) recebe priori independente: \[
+\gamma_{1,t} \sim \mathrm{Unif}(0,\,\bar{\gamma}), \qquad
+\gamma_{k,t} \sim \mathrm{Unif}\!\left(0,\;1-\textstyle\sum_{j<k}\gamma_{j,t}\right),
+\quad k = 2,\ldots,K.
+\]
+
+\textbf{Estagio 4 --- prioris gerais:} \[
+\beta_j \sim \mathrm{N}(0,1), \qquad
+s_{1:A} \sim \mathrm{ICAR}(\tau_s), \qquad
+\sigma_s \sim \mathrm{Meio\text{-}Cauchy}(0,1) \;\Rightarrow\; \tau_s = \sigma_s^{-2}.
+\]
+
+As tres covariaveis sao centradas em relacao a sua media global:
+(1)\textasciitilde proporcao de prenatal inadequado,
+(2)\textasciitilde proporcao de maes com ensino superior,
+(3)\textasciitilde proporcao de nascidos com baixo peso. Cada
+especificacao e ajustada nos modelos \textbf{espacial} (com \(s_i\)) e
+\textbf{nao-espacial} (sem \(s_i\)).
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{Criterios de Informacao --- WAIC e
+LPML}\label{criterios-de-informacao-waic-e-lpml}
+
+WAIC menor (ou LPML menos negativo) indica melhor ajuste preditivo
+penalizado pela complexidade.
+
+\begingroup\fontsize{9}{11}\selectfont
+
+\begin{longtable}[t]{llrrrr}
+\caption{\label{tab:tab-criteria}Criterios de informacao por especificacao e modelo (ordenado por WAIC).}\\
+\toprule
+Especificacao & Modelo & WAIC & LPML & lppd & p-WAIC\\
+\midrule
+\cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{10914.39} & \cellcolor{gray!10}{-5458.340} & \cellcolor{gray!10}{-5302.494} & \cellcolor{gray!10}{154.7015}\\
+\cmidrule{1-6}\pagebreak[0]
+Intercepto Temporal + Gamma Temporal & Espacial & 10919.76 & -5465.078 & -5251.290 & 208.5905\\
+\cmidrule{1-6}\pagebreak[0]
+\cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{11114.17} & \cellcolor{gray!10}{-5559.205} & \cellcolor{gray!10}{-5314.200} & \cellcolor{gray!10}{242.8835}\\
+\cmidrule{1-6}\pagebreak[0]
+Gamma Temporal & Espacial & 11164.69 & -5586.440 & -5374.637 & 207.7083\\
+\cmidrule{1-6}\pagebreak[0]
+\cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{11168.86} & \cellcolor{gray!10}{-5588.476} & \cellcolor{gray!10}{-5313.277} & \cellcolor{gray!10}{271.1517}\\
+\cmidrule{1-6}\pagebreak[0]
+Lambda Compartilhado & Espacial & 11350.51 & -5675.633 & -5538.972 & 136.2824\\
+\cmidrule{1-6}\pagebreak[0]
+\cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{11466.48} & \cellcolor{gray!10}{-5733.598} & \cellcolor{gray!10}{-5588.105} & \cellcolor{gray!10}{145.1337}\\
+\cmidrule{1-6}\pagebreak[0]
+Intercepto Temporal + Gamma Temporal & Nao-Espacial & 12108.06 & -6056.796 & -5911.591 & 142.4408\\
+\cmidrule{1-6}\pagebreak[0]
+\cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{12227.15} & \cellcolor{gray!10}{-6115.061} & \cellcolor{gray!10}{-6003.024} & \cellcolor{gray!10}{110.5534}\\
+\cmidrule{1-6}\pagebreak[0]
+Lambda Compartilhado & Nao-Espacial & 12252.38 & -6126.213 & -6104.637 & 21.5519\\
+\cmidrule{1-6}\pagebreak[0]
+\cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{12544.97} & \cellcolor{gray!10}{-6273.020} & \cellcolor{gray!10}{-6190.241} & \cellcolor{gray!10}{82.2448}\\
+\cmidrule{1-6}\pagebreak[0]
+Intercepto Fixo & Nao-Espacial & 12939.17 & -6469.581 & -6453.296 & 16.2902\\
+\bottomrule
+\end{longtable}
+\endgroup{}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{Resultados Inferenciais --- Parametros
+Estruturais}\label{resultados-inferenciais-parametros-estruturais}
+
+\subsection{\texorpdfstring{Covariaveis
+\(\beta\)}{Covariaveis \textbackslash beta}}\label{covariaveis-beta}
+
+\begin{landscape}
+\begingroup\fontsize{7}{9}\selectfont
+
+\begin{longtabu} to \linewidth {>{\raggedright}X>{\raggedright}X>{\raggedright}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X}
+\caption{\label{tab:tab-beta}Inferencia posterior dos coeficientes $\beta$.}\\
+\toprule
+Parametro & Especificacao & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endfirsthead
+\caption[]{Inferencia posterior dos coeficientes $\beta$. \textit{(continued)}}\\
+\toprule
+Parametro & Especificacao & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endhead
+
+\endfoot
+\bottomrule
+\endlastfoot
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.5397} & \cellcolor{gray!10}{0.0548} & \cellcolor{gray!10}{0.4329} & \cellcolor{gray!10}{0.6449} & \cellcolor{gray!10}{2978.519} & \cellcolor{gray!10}{0.9999}\\
+\cmidrule{1-9}
+beta[1] & Gamma Temporal & Nao-Espacial & 0.8078 & 0.0379 & 0.7319 & 0.8789 & 6513.567 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.8823} & \cellcolor{gray!10}{0.0489} & \cellcolor{gray!10}{0.7897} & \cellcolor{gray!10}{0.9791} & \cellcolor{gray!10}{3813.369} & \cellcolor{gray!10}{1.0001}\\
+\cmidrule{1-9}
+beta[1] & Intercepto Fixo & Nao-Espacial & 0.6888 & 0.0390 & 0.6117 & 0.7644 & 5330.176 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{-0.1148} & \cellcolor{gray!10}{0.0677} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{1912.453} & \cellcolor{gray!10}{1.0007}\\
+\cmidrule{1-9}
+beta[1] & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 0.4937 & 0.0440 & NA & NA & 5026.368 & 1.0008\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{-0.1530} & \cellcolor{gray!10}{0.0664} & \cellcolor{gray!10}{-0.2770} & \cellcolor{gray!10}{-0.0187} & \cellcolor{gray!10}{1890.334} & \cellcolor{gray!10}{1.0012}\\
+\cmidrule{1-9}
+beta[1] & Intercepto Temporal i.i.d. & Nao-Espacial & 0.1459 & 0.0476 & 0.0531 & 0.2414 & 4549.377 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.9987} & \cellcolor{gray!10}{0.0449} & \cellcolor{gray!10}{0.9147} & \cellcolor{gray!10}{1.0872} & \cellcolor{gray!10}{4768.417} & \cellcolor{gray!10}{1.0007}\\
+\cmidrule{1-9}
+beta[1] & Lambda Compartilhado & Nao-Espacial & 0.9630 & 0.0357 & 0.8953 & 1.0345 & 6913.947 & 1.0010\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{1.3581} & \cellcolor{gray!10}{0.0609} & \cellcolor{gray!10}{1.2339} & \cellcolor{gray!10}{1.4737} & \cellcolor{gray!10}{2264.886} & \cellcolor{gray!10}{0.9999}\\
+\cmidrule{1-9}
+beta[1] & Lambda Dinamico Regional & Nao-Espacial & 1.1911 & 0.0581 & 1.0801 & 1.3066 & 2670.245 & 1.0006\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{-0.0446} & \cellcolor{gray!10}{0.1045} & \cellcolor{gray!10}{-0.2422} & \cellcolor{gray!10}{0.1689} & \cellcolor{gray!10}{6086.818} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+beta[2] & Gamma Temporal & Nao-Espacial & -0.3048 & 0.0873 & -0.4722 & -0.1295 & 7730.112 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{-1.5702} & \cellcolor{gray!10}{0.1205} & \cellcolor{gray!10}{-1.8062} & \cellcolor{gray!10}{-1.3394} & \cellcolor{gray!10}{3150.855} & \cellcolor{gray!10}{1.0004}\\
+\cmidrule{1-9}
+beta[2] & Intercepto Fixo & Nao-Espacial & -1.6358 & 0.0908 & -1.8105 & -1.4587 & 5089.837 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.2107} & \cellcolor{gray!10}{0.1124} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{5845.725} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+beta[2] & Intercepto Temporal + Gamma Temporal & Nao-Espacial & -0.1848 & 0.0918 & NA & NA & 7353.979 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.6488} & \cellcolor{gray!10}{0.1778} & \cellcolor{gray!10}{0.2984} & \cellcolor{gray!10}{0.9930} & \cellcolor{gray!10}{1407.941} & \cellcolor{gray!10}{1.0017}\\
+\cmidrule{1-9}
+beta[2] & Intercepto Temporal i.i.d. & Nao-Espacial & -1.1114 & 0.1011 & -1.3117 & -0.9163 & 5215.396 & 1.0007\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{-0.1442} & \cellcolor{gray!10}{0.1003} & \cellcolor{gray!10}{-0.3361} & \cellcolor{gray!10}{0.0564} & \cellcolor{gray!10}{6435.594} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+beta[2] & Lambda Compartilhado & Nao-Espacial & -0.4023 & 0.0826 & -0.5609 & -0.2389 & 7738.579 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{-1.0587} & \cellcolor{gray!10}{0.1518} & \cellcolor{gray!10}{-1.3430} & \cellcolor{gray!10}{-0.7518} & \cellcolor{gray!10}{2077.642} & \cellcolor{gray!10}{1.0003}\\
+\cmidrule{1-9}
+beta[2] & Lambda Dinamico Regional & Nao-Espacial & -1.4120 & 0.1470 & -1.7041 & -1.1293 & 2605.702 & 1.0006\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.4528} & \cellcolor{gray!10}{0.5578} & \cellcolor{gray!10}{2.3912} & \cellcolor{gray!10}{4.5530} & \cellcolor{gray!10}{4316.088} & \cellcolor{gray!10}{1.0004}\\
+\cmidrule{1-9}
+beta[3] & Gamma Temporal & Nao-Espacial & -0.1041 & 0.4110 & -0.9321 & 0.6757 & 6894.633 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3041} & \cellcolor{gray!10}{0.5618} & \cellcolor{gray!10}{2.1750} & \cellcolor{gray!10}{4.3744} & \cellcolor{gray!10}{4229.624} & \cellcolor{gray!10}{1.0016}\\
+\cmidrule{1-9}
+beta[3] & Intercepto Fixo & Nao-Espacial & 1.5078 & 0.4042 & 0.7151 & 2.2847 & 6894.125 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{4.0381} & \cellcolor{gray!10}{0.5760} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{3726.820} & \cellcolor{gray!10}{1.0000}\\
+\cmidrule{1-9}
+beta[3] & Intercepto Temporal + Gamma Temporal & Nao-Espacial & -0.6560 & 0.4152 & NA & NA & 6536.801 & 1.0006\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.7627} & \cellcolor{gray!10}{0.5770} & \cellcolor{gray!10}{2.6738} & \cellcolor{gray!10}{4.9208} & \cellcolor{gray!10}{3711.795} & \cellcolor{gray!10}{1.0003}\\
+\cmidrule{1-9}
+beta[3] & Intercepto Temporal i.i.d. & Nao-Espacial & -0.4174 & 0.4209 & -1.2209 & 0.4380 & 6387.202 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2622} & \cellcolor{gray!10}{0.5391} & \cellcolor{gray!10}{2.2589} & \cellcolor{gray!10}{4.3597} & \cellcolor{gray!10}{4734.382} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+beta[3] & Lambda Compartilhado & Nao-Espacial & -0.0459 & 0.4144 & -0.8834 & 0.7450 & 6902.103 & 1.0008\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{5.3753} & \cellcolor{gray!10}{0.6271} & \cellcolor{gray!10}{4.1301} & \cellcolor{gray!10}{6.5499} & \cellcolor{gray!10}{2744.463} & \cellcolor{gray!10}{1.0003}\\
+\cmidrule{1-9}
+beta[3] & Lambda Dinamico Regional & Nao-Espacial & 3.0152 & 0.5751 & 1.8630 & 4.0962 & 5712.041 & 1.0000\\*
+\end{longtabu}
+\endgroup{}
+\end{landscape}
+
+\subsection{\texorpdfstring{Intercepto Fixo
+\(\beta_0\)}{Intercepto Fixo \textbackslash beta\_0}}\label{intercepto-fixo-beta_0}
+
+\begingroup\fontsize{9}{11}\selectfont
+
+\begin{longtable}[t]{lrrrrrr}
+\caption{\label{tab:tab-beta0}Inferencia posterior do intercepto fixo $\beta_0$.}\\
+\toprule
+Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3632} & \cellcolor{gray!10}{0.0369} & \cellcolor{gray!10}{3.2956} & \cellcolor{gray!10}{3.4331} & \cellcolor{gray!10}{207.0233} & \cellcolor{gray!10}{1.0185}\\
+\cmidrule{1-7}\pagebreak[0]
+Nao-Espacial & 3.3161 & 0.0304 & 3.2674 & 3.3699 & 333.2216 & 1.0039\\
+\bottomrule
+\end{longtable}
+\endgroup{}
+
+\subsection{\texorpdfstring{Parametros de Cluster
+\(\gamma\)}{Parametros de Cluster \textbackslash gamma}}\label{parametros-de-cluster-gamma}
+
+Para especificacoes com \(\gamma\) \textbf{fixo no tempo} (Intercepto
+Fixo, Intercepto Temporal i.i.d., Lambda Dinamico Regional, Lambda
+Compartilhado), a tabela exibe a inferencia posterior de cada
+\(\gamma_k\). Para especificacoes com \(\gamma_{k,t}\) \textbf{temporal}
+(Gamma Temporal e Intercepto Temporal + Gamma Temporal), a tabela exibe
+as metricas \textbf{medias sobre os \(T\) periodos} por cluster \(k\);
+as trajetorias temporais sao apresentadas na secao correspondente.
+
+\begin{landscape}
+\begingroup\fontsize{7}{9}\selectfont
+
+\begin{longtabu} to \linewidth {>{\raggedright}X>{\raggedright}X>{\raggedright}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X}
+\caption{\label{tab:tab-gamma}Inferencia posterior de $\gamma$. Para especificacoes com $\gamma_{k,t}$ temporal, os valores sao medias sobre os $T$ periodos.}\\
+\toprule
+Parametro & Especificacao & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endfirsthead
+\caption[]{Inferencia posterior de $\gamma$. Para especificacoes com $\gamma_{k,t}$ temporal, os valores sao medias sobre os $T$ periodos. \textit{(continued)}}\\
+\toprule
+Parametro & Especificacao & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endhead
+
+\endfoot
+\bottomrule
+\endlastfoot
+\cellcolor{gray!10}{gamma[1, t] (media t)} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0544} & \cellcolor{gray!10}{0.0157} & \cellcolor{gray!10}{0.0273} & \cellcolor{gray!10}{0.0783} & \cellcolor{gray!10}{8064.8362} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+gamma[2, t] (media t) & Gamma Temporal & Espacial & 0.1394 & 0.0431 & 0.0580 & 0.2208 & 5332.0710 & 1.0003\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3, t] (media t)} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.1042} & \cellcolor{gray!10}{0.0505} & \cellcolor{gray!10}{0.0116} & \cellcolor{gray!10}{0.1977} & \cellcolor{gray!10}{6655.0181} & \cellcolor{gray!10}{1.0003}\\
+\cmidrule{1-9}
+gamma[4, t] (media t) & Gamma Temporal & Espacial & 0.1125 & 0.0426 & 0.0354 & 0.1937 & 5944.5993 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1, t] (media t)} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0542} & \cellcolor{gray!10}{0.0147} & \cellcolor{gray!10}{0.0287} & \cellcolor{gray!10}{0.0768} & \cellcolor{gray!10}{7959.7543} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+gamma[2, t] (media t) & Gamma Temporal & Nao-Espacial & 0.0359 & 0.0235 & 0.0003 & 0.0796 & 8035.5168 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3, t] (media t)} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0450} & \cellcolor{gray!10}{0.0303} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.1013} & \cellcolor{gray!10}{8076.0137} & \cellcolor{gray!10}{1.0005}\\
+\cmidrule{1-9}
+gamma[4, t] (media t) & Gamma Temporal & Nao-Espacial & 0.0566 & 0.0326 & 0.0037 & 0.1177 & 7976.5067 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0461} & \cellcolor{gray!10}{0.0280} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0932} & \cellcolor{gray!10}{419.6482} & \cellcolor{gray!10}{1.0088}\\
+\cmidrule{1-9}
+gamma[2] & Intercepto Fixo & Espacial & 0.0180 & 0.0166 & 0.0000 & 0.0513 & 2010.5075 & 1.0018\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0409} & \cellcolor{gray!10}{0.0335} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.1079} & \cellcolor{gray!10}{650.6901} & \cellcolor{gray!10}{1.0035}\\
+\cmidrule{1-9}
+gamma[4] & Intercepto Fixo & Espacial & 0.0506 & 0.0402 & 0.0000 & 0.1299 & 604.2728 & 1.0084\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0460} & \cellcolor{gray!10}{0.0284} & \cellcolor{gray!10}{0.0004} & \cellcolor{gray!10}{0.0939} & \cellcolor{gray!10}{327.6063} & \cellcolor{gray!10}{1.0038}\\
+\cmidrule{1-9}
+gamma[2] & Intercepto Fixo & Nao-Espacial & 0.0012 & 0.0012 & 0.0000 & 0.0035 & 7611.4603 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0036} & \cellcolor{gray!10}{0.0032} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0102} & \cellcolor{gray!10}{8000.0000} & \cellcolor{gray!10}{0.9999}\\
+\cmidrule{1-9}
+gamma[4] & Intercepto Fixo & Nao-Espacial & 0.0112 & 0.0076 & 0.0000 & 0.0252 & 8000.0000 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1, t] (media t)} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0468} & \cellcolor{gray!10}{0.0287} & \cellcolor{gray!10}{0.0001} & \cellcolor{gray!10}{0.0940} & \cellcolor{gray!10}{5155.1594} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+gamma[2, t] (media t) & Intercepto Temporal + Gamma Temporal & Espacial & 0.0779 & 0.0445 & 0.0037 & 0.1585 & 5457.3972 & 1.0004\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3, t] (media t)} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0978} & \cellcolor{gray!10}{0.0501} & \cellcolor{gray!10}{0.0095} & \cellcolor{gray!10}{0.1905} & \cellcolor{gray!10}{5945.5667} & \cellcolor{gray!10}{1.0005}\\
+\cmidrule{1-9}
+gamma[4, t] (media t) & Intercepto Temporal + Gamma Temporal & Espacial & 0.1216 & 0.0452 & 0.0418 & 0.2083 & 5452.7471 & 1.0012\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1, t] (media t)} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0470} & \cellcolor{gray!10}{0.0288} & \cellcolor{gray!10}{0.0001} & \cellcolor{gray!10}{0.0941} & \cellcolor{gray!10}{5079.5611} & \cellcolor{gray!10}{1.0001}\\
+\cmidrule{1-9}
+gamma[2, t] (media t) & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 0.0239 & 0.0202 & 0.0000 & 0.0642 & 7481.3550 & 1.0004\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3, t] (media t)} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0386} & \cellcolor{gray!10}{0.0284} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0927} & \cellcolor{gray!10}{7604.0693} & \cellcolor{gray!10}{1.0003}\\
+\cmidrule{1-9}
+gamma[4, t] (media t) & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 0.0597 & 0.0326 & 0.0067 & 0.1210 & 7915.9059 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0128} & \cellcolor{gray!10}{0.0121} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0370} & \cellcolor{gray!10}{1223.6776} & \cellcolor{gray!10}{1.0008}\\
+\cmidrule{1-9}
+gamma[2] & Intercepto Temporal i.i.d. & Espacial & 0.0114 & 0.0111 & 0.0000 & 0.0338 & 3007.5022 & 1.0026\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0222} & \cellcolor{gray!10}{0.0205} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0640} & \cellcolor{gray!10}{1290.4920} & \cellcolor{gray!10}{1.0242}\\
+\cmidrule{1-9}
+gamma[4] & Intercepto Temporal i.i.d. & Espacial & 0.0286 & 0.0263 & 0.0000 & 0.0810 & 1100.0301 & 1.0010\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0135} & \cellcolor{gray!10}{0.0129} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0395} & \cellcolor{gray!10}{1211.4556} & \cellcolor{gray!10}{1.0223}\\
+\cmidrule{1-9}
+gamma[2] & Intercepto Temporal i.i.d. & Nao-Espacial & 0.0011 & 0.0010 & 0.0000 & 0.0032 & 7497.9114 & 1.0001\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0033} & \cellcolor{gray!10}{0.0031} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0094} & \cellcolor{gray!10}{8148.9595} & \cellcolor{gray!10}{1.0015}\\
+\cmidrule{1-9}
+gamma[4] & Intercepto Temporal i.i.d. & Nao-Espacial & 0.0108 & 0.0075 & 0.0000 & 0.0246 & 6456.5403 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0279} & \cellcolor{gray!10}{0.0233} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0768} & \cellcolor{gray!10}{1074.2230} & \cellcolor{gray!10}{1.0021}\\
+\cmidrule{1-9}
+gamma[2] & Lambda Compartilhado & Espacial & 0.0130 & 0.0122 & 0.0000 & 0.0378 & 3385.0047 & 1.0005\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0277} & \cellcolor{gray!10}{0.0226} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0718} & \cellcolor{gray!10}{1269.9543} & \cellcolor{gray!10}{1.0043}\\
+\cmidrule{1-9}
+gamma[4] & Lambda Compartilhado & Espacial & 0.0308 & 0.0261 & 0.0000 & 0.0838 & 1114.3900 & 1.0001\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0294} & \cellcolor{gray!10}{0.0242} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0791} & \cellcolor{gray!10}{1222.8104} & \cellcolor{gray!10}{1.0041}\\
+\cmidrule{1-9}
+gamma[2] & Lambda Compartilhado & Nao-Espacial & 0.0025 & 0.0024 & 0.0000 & 0.0074 & 7567.8228 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0154} & \cellcolor{gray!10}{0.0100} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0341} & \cellcolor{gray!10}{7937.9913} & \cellcolor{gray!10}{1.0000}\\
+\cmidrule{1-9}
+gamma[4] & Lambda Compartilhado & Nao-Espacial & 0.0692 & 0.0126 & 0.0451 & 0.0941 & 7318.3701 & 1.0005\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0005} & \cellcolor{gray!10}{0.0005} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0015} & \cellcolor{gray!10}{7917.5846} & \cellcolor{gray!10}{1.0014}\\
+\cmidrule{1-9}
+gamma[2] & Lambda Dinamico Regional & Espacial & 0.0007 & 0.0007 & 0.0000 & 0.0022 & 6490.0991 & 1.0015\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{0.0010} & \cellcolor{gray!10}{0.0010} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0030} & \cellcolor{gray!10}{7590.9583} & \cellcolor{gray!10}{1.0002}\\
+\cmidrule{1-9}
+gamma[4] & Lambda Dinamico Regional & Espacial & 0.0015 & 0.0015 & 0.0000 & 0.0045 & 7812.6102 & 1.0015\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[1]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0007} & \cellcolor{gray!10}{0.0006} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0020} & \cellcolor{gray!10}{8000.0000} & \cellcolor{gray!10}{0.9999}\\
+\cmidrule{1-9}
+gamma[2] & Lambda Dinamico Regional & Nao-Espacial & 0.0010 & 0.0010 & 0.0000 & 0.0031 & 7624.9381 & 1.0019\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{gamma[3]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Nao-Espacial} & \cellcolor{gray!10}{0.0015} & \cellcolor{gray!10}{0.0015} & \cellcolor{gray!10}{0.0000} & \cellcolor{gray!10}{0.0046} & \cellcolor{gray!10}{7551.2105} & \cellcolor{gray!10}{1.0001}\\
+\cmidrule{1-9}
+gamma[4] & Lambda Dinamico Regional & Nao-Espacial & 0.0027 & 0.0027 & 0.0000 & 0.0082 & 7428.6517 & 1.0023\\*
+\end{longtabu}
+\endgroup{}
+\end{landscape}
+
+\subsection{\texorpdfstring{Precisao Espacial \(\tau_s\) (modelo
+espacial)}{Precisao Espacial \textbackslash tau\_s (modelo espacial)}}\label{precisao-espacial-tau_s-modelo-espacial}
+
+\begingroup\fontsize{9}{11}\selectfont
+
+\begin{longtable}[t]{lrrrrrrrr}
+\caption{\label{tab:tab-tau}Inferencia posterior da precisao espacial $\tau_s$.}\\
+\toprule
+Especificacao & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat & lower & upper\\
+\midrule
+\cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{5.3260} & \cellcolor{gray!10}{1.0488} & \cellcolor{gray!10}{3.4101} & \cellcolor{gray!10}{7.4137} & \cellcolor{gray!10}{2498.105} & \cellcolor{gray!10}{1.0001} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{NA}\\
+\cmidrule{1-9}\pagebreak[0]
+Intercepto Fixo & 4.0544 & 0.7608 & 2.6299 & 5.5741 & 5672.005 & 1.0002 & NA & NA\\
+\cmidrule{1-9}\pagebreak[0]
+\cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{5.2841} & \cellcolor{gray!10}{1.0118} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{3743.729} & \cellcolor{gray!10}{1.0017} & \cellcolor{gray!10}{3.4311} & \cellcolor{gray!10}{7.2882}\\
+\cmidrule{1-9}\pagebreak[0]
+Intercepto Temporal i.i.d. & 3.6203 & 0.6658 & 2.3879 & 4.9573 & 6024.309 & 1.0006 & NA & NA\\
+\cmidrule{1-9}\pagebreak[0]
+\cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{9.3723} & \cellcolor{gray!10}{1.8226} & \cellcolor{gray!10}{5.8360} & \cellcolor{gray!10}{12.9333} & \cellcolor{gray!10}{6171.929} & \cellcolor{gray!10}{1.0002} & \cellcolor{gray!10}{NA} & \cellcolor{gray!10}{NA}\\
+\cmidrule{1-9}\pagebreak[0]
+Lambda Dinamico Regional & 0.4531 & 0.0887 & 0.2893 & 0.6318 & 1613.342 & 1.0014 & NA & NA\\
+\bottomrule
+\end{longtable}
+\endgroup{}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{Intercepto Temporal
+\(\beta_{0t}\)}{Intercepto Temporal \textbackslash beta\_\{0t\}}}\label{intercepto-temporal-beta_0t}
+
+O intercepto \(\beta_{0t}\) e comum as especificacoes \textbf{Intercepto
+Temporal i.i.d.} e \textbf{Intercepto Temporal + Gamma Temporal}.
+Valores decrescentes indicam reducao do risco basal alem do explicado
+pelas covariaveis.
+
+\subsection{Especificacao: Intercepto Temporal
+i.i.d.}\label{especificacao-intercepto-temporal-i.i.d.}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\beta_{0t}$: espacial vs.\@ nao-espacial --- Intercepto Temporal i.i.d.}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/beta0t_comparativo.png}
+\end{figure}
+
+\subsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\beta_{0t}$: espacial vs.\@ nao-espacial --- Intercepto Temporal + Gamma Temporal}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/beta0t_comparativo.png}
+\end{figure}
+
+\begin{landscape}
+\begingroup\fontsize{7}{9}\selectfont
+
+\begin{longtabu} to \linewidth {>{\raggedleft}X>{\raggedright}X>{\raggedright}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X}
+\caption{\label{tab:tab-beta0t}Inferencia posterior de $\beta_{0t}$ por periodo e especificacao.}\\
+\toprule
+Tempo & Especificacao & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endfirsthead
+\caption[]{Inferencia posterior de $\beta_{0t}$ por periodo e especificacao. \textit{(continued)}}\\
+\toprule
+Tempo & Especificacao & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endhead
+
+\endfoot
+\bottomrule
+\endlastfoot
+\cellcolor{gray!10}{1} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.9146} & \cellcolor{gray!10}{0.0430} & \cellcolor{gray!10}{3.8335} & \cellcolor{gray!10}{3.9976} & \cellcolor{gray!10}{2103.6701} & \cellcolor{gray!10}{1.0009}\\
+\cmidrule{1-9}
+1 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.6318 & 0.0374 & 3.5643 & 3.7049 & 3049.7275 & 1.0008\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{2} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.8283} & \cellcolor{gray!10}{0.0489} & \cellcolor{gray!10}{3.7326} & \cellcolor{gray!10}{3.9214} & \cellcolor{gray!10}{1723.8458} & \cellcolor{gray!10}{1.0008}\\
+\cmidrule{1-9}
+2 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.5403 & 0.0394 & 3.4691 & 3.6172 & 3104.5009 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{3} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.8021} & \cellcolor{gray!10}{0.0492} & \cellcolor{gray!10}{3.7085} & \cellcolor{gray!10}{3.8976} & \cellcolor{gray!10}{1639.1727} & \cellcolor{gray!10}{1.0010}\\
+\cmidrule{1-9}
+3 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.5441 & 0.0404 & 3.4677 & 3.6213 & 3376.8216 & 1.0012\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{4} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.7323} & \cellcolor{gray!10}{0.0482} & \cellcolor{gray!10}{3.6430} & \cellcolor{gray!10}{3.8283} & \cellcolor{gray!10}{1805.9625} & \cellcolor{gray!10}{1.0000}\\
+\cmidrule{1-9}
+4 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.5019 & 0.0403 & 3.4276 & 3.5810 & 3395.8488 & 1.0017\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{5} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.7284} & \cellcolor{gray!10}{0.0496} & \cellcolor{gray!10}{3.6355} & \cellcolor{gray!10}{3.8287} & \cellcolor{gray!10}{2076.8188} & \cellcolor{gray!10}{1.0036}\\
+\cmidrule{1-9}
+5 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.5096 & 0.0408 & 3.4354 & 3.5912 & 3437.8112 & 1.0005\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{6} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.6632} & \cellcolor{gray!10}{0.0493} & \cellcolor{gray!10}{3.5710} & \cellcolor{gray!10}{3.7621} & \cellcolor{gray!10}{2191.5162} & \cellcolor{gray!10}{1.0019}\\
+\cmidrule{1-9}
+6 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.4558 & 0.0405 & 3.3804 & 3.5344 & 3650.2815 & 1.0004\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{7} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.6746} & \cellcolor{gray!10}{0.0488} & \cellcolor{gray!10}{3.5775} & \cellcolor{gray!10}{3.7667} & \cellcolor{gray!10}{2389.0457} & \cellcolor{gray!10}{1.0037}\\
+\cmidrule{1-9}
+7 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.4927 & 0.0420 & 3.4126 & 3.5720 & 3582.5918 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{8} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.5563} & \cellcolor{gray!10}{0.0518} & \cellcolor{gray!10}{3.4590} & \cellcolor{gray!10}{3.6586} & \cellcolor{gray!10}{2237.1404} & \cellcolor{gray!10}{1.0014}\\
+\cmidrule{1-9}
+8 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.3875 & 0.0435 & 3.3045 & 3.4721 & 3672.8526 & 1.0007\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{9} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.5980} & \cellcolor{gray!10}{0.0497} & \cellcolor{gray!10}{3.5028} & \cellcolor{gray!10}{3.6931} & \cellcolor{gray!10}{2168.6178} & \cellcolor{gray!10}{1.0010}\\
+\cmidrule{1-9}
+9 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.4441 & 0.0425 & 3.3620 & 3.5237 & 3851.9321 & 1.0003\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{10} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.5103} & \cellcolor{gray!10}{0.0515} & \cellcolor{gray!10}{3.4110} & \cellcolor{gray!10}{3.6099} & \cellcolor{gray!10}{2307.5241} & \cellcolor{gray!10}{1.0024}\\
+\cmidrule{1-9}
+10 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.3553 & 0.0425 & 3.2755 & 3.4368 & 3723.3674 & 1.0001\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{11} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.4270} & \cellcolor{gray!10}{0.0487} & \cellcolor{gray!10}{3.3342} & \cellcolor{gray!10}{3.5227} & \cellcolor{gray!10}{2890.3039} & \cellcolor{gray!10}{0.9999}\\
+\cmidrule{1-9}
+11 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.3102 & 0.0433 & 3.2305 & 3.3961 & 4371.8200 & 1.0000\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{12} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.4690} & \cellcolor{gray!10}{0.0502} & \cellcolor{gray!10}{3.3719} & \cellcolor{gray!10}{3.5656} & \cellcolor{gray!10}{2095.7651} & \cellcolor{gray!10}{1.0006}\\
+\cmidrule{1-9}
+12 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.3505 & 0.0444 & 3.2625 & 3.4325 & 4098.1184 & 1.0001\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{13} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.4501} & \cellcolor{gray!10}{0.0526} & \cellcolor{gray!10}{3.3488} & \cellcolor{gray!10}{3.5535} & \cellcolor{gray!10}{2434.7923} & \cellcolor{gray!10}{1.0028}\\
+\cmidrule{1-9}
+13 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.2981 & 0.0450 & 3.2165 & 3.3875 & 3917.1221 & 1.0004\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{14} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3714} & \cellcolor{gray!10}{0.0535} & \cellcolor{gray!10}{3.2678} & \cellcolor{gray!10}{3.4742} & \cellcolor{gray!10}{3108.0836} & \cellcolor{gray!10}{1.0024}\\
+\cmidrule{1-9}
+14 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.2196 & 0.0460 & 3.1305 & 3.3085 & 4487.2824 & 1.0005\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{15} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2846} & \cellcolor{gray!10}{0.0528} & \cellcolor{gray!10}{3.1873} & \cellcolor{gray!10}{3.3926} & \cellcolor{gray!10}{2744.8096} & \cellcolor{gray!10}{1.0007}\\
+\cmidrule{1-9}
+15 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1618 & 0.0447 & 3.0808 & 3.2525 & 3951.5678 & 1.0010\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{16} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3240} & \cellcolor{gray!10}{0.0528} & \cellcolor{gray!10}{3.2254} & \cellcolor{gray!10}{3.4298} & \cellcolor{gray!10}{2617.6201} & \cellcolor{gray!10}{1.0004}\\
+\cmidrule{1-9}
+16 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.2068 & 0.0445 & 3.1193 & 3.2917 & 5088.6959 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{17} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2932} & \cellcolor{gray!10}{0.0541} & \cellcolor{gray!10}{3.1892} & \cellcolor{gray!10}{3.3998} & \cellcolor{gray!10}{2686.0928} & \cellcolor{gray!10}{1.0004}\\
+\cmidrule{1-9}
+17 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1855 & 0.0465 & 3.0908 & 3.2698 & 4017.2896 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{18} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2851} & \cellcolor{gray!10}{0.0546} & \cellcolor{gray!10}{3.1822} & \cellcolor{gray!10}{3.3942} & \cellcolor{gray!10}{2762.7380} & \cellcolor{gray!10}{1.0003}\\
+\cmidrule{1-9}
+18 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1819 & 0.0460 & 3.0965 & 3.2725 & 4208.8540 & 1.0002\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{19} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2465} & \cellcolor{gray!10}{0.0531} & \cellcolor{gray!10}{3.1414} & \cellcolor{gray!10}{3.3471} & \cellcolor{gray!10}{2910.1164} & \cellcolor{gray!10}{1.0000}\\
+\cmidrule{1-9}
+19 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1617 & 0.0462 & 3.0778 & 3.2543 & 4307.4226 & 1.0008\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{20} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3303} & \cellcolor{gray!10}{0.0568} & \cellcolor{gray!10}{3.2212} & \cellcolor{gray!10}{3.4394} & \cellcolor{gray!10}{2751.3838} & \cellcolor{gray!10}{1.0005}\\
+\cmidrule{1-9}
+20 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.2200 & 0.0481 & 3.1282 & 3.3146 & 3901.8196 & 1.0003\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{21} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.1717} & \cellcolor{gray!10}{0.0564} & \cellcolor{gray!10}{3.0546} & \cellcolor{gray!10}{3.2737} & \cellcolor{gray!10}{2709.9300} & \cellcolor{gray!10}{1.0013}\\
+\cmidrule{1-9}
+21 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1299 & 0.0438 & 3.0465 & 3.2137 & 4799.3752 & 1.0003\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{22} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.1217} & \cellcolor{gray!10}{0.0555} & \cellcolor{gray!10}{3.0119} & \cellcolor{gray!10}{3.2275} & \cellcolor{gray!10}{3194.8116} & \cellcolor{gray!10}{1.0030}\\
+\cmidrule{1-9}
+22 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1102 & 0.0442 & 3.0213 & 3.1918 & 4835.8923 & 1.0004\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{23} & \cellcolor{gray!10}{Intercepto Temporal + Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2157} & \cellcolor{gray!10}{0.0582} & \cellcolor{gray!10}{3.0974} & \cellcolor{gray!10}{3.3246} & \cellcolor{gray!10}{2661.7084} & \cellcolor{gray!10}{1.0021}\\
+\cmidrule{1-9}
+23 & Intercepto Temporal + Gamma Temporal & Nao-Espacial & 3.1887 & 0.0461 & 3.0983 & 3.2761 & 4486.7563 & 0.9999\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{1} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.8501} & \cellcolor{gray!10}{0.0312} & \cellcolor{gray!10}{3.7900} & \cellcolor{gray!10}{3.9125} & \cellcolor{gray!10}{959.6195} & \cellcolor{gray!10}{1.0060}\\
+\cmidrule{1-9}
+1 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.5922 & 0.0237 & 3.5478 & 3.6413 & 2296.1274 & 1.0036\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{2} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.6791} & \cellcolor{gray!10}{0.0311} & \cellcolor{gray!10}{3.6209} & \cellcolor{gray!10}{3.7413} & \cellcolor{gray!10}{1030.3056} & \cellcolor{gray!10}{1.0049}\\
+\cmidrule{1-9}
+2 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.4620 & 0.0244 & 3.4149 & 3.5104 & 2224.1762 & 1.0019\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{3} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.6449} & \cellcolor{gray!10}{0.0302} & \cellcolor{gray!10}{3.5874} & \cellcolor{gray!10}{3.7058} & \cellcolor{gray!10}{1062.5359} & \cellcolor{gray!10}{1.0071}\\
+\cmidrule{1-9}
+3 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.4567 & 0.0248 & 3.4100 & 3.5074 & 2637.9786 & 1.0016\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{4} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.5976} & \cellcolor{gray!10}{0.0298} & \cellcolor{gray!10}{3.5383} & \cellcolor{gray!10}{3.6547} & \cellcolor{gray!10}{1037.5040} & \cellcolor{gray!10}{1.0038}\\
+\cmidrule{1-9}
+4 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.4286 & 0.0249 & 3.3797 & 3.4770 & 2408.8208 & 1.0018\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{5} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.5460} & \cellcolor{gray!10}{0.0295} & \cellcolor{gray!10}{3.4892} & \cellcolor{gray!10}{3.6036} & \cellcolor{gray!10}{1160.8457} & \cellcolor{gray!10}{1.0039}\\
+\cmidrule{1-9}
+5 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.3971 & 0.0250 & 3.3470 & 3.4463 & 2480.2757 & 1.0021\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{6} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.5241} & \cellcolor{gray!10}{0.0293} & \cellcolor{gray!10}{3.4682} & \cellcolor{gray!10}{3.5820} & \cellcolor{gray!10}{1266.5764} & \cellcolor{gray!10}{1.0035}\\
+\cmidrule{1-9}
+6 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.3791 & 0.0252 & 3.3313 & 3.4294 & 2879.0624 & 1.0047\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{7} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.4834} & \cellcolor{gray!10}{0.0286} & \cellcolor{gray!10}{3.4305} & \cellcolor{gray!10}{3.5414} & \cellcolor{gray!10}{1339.8532} & \cellcolor{gray!10}{1.0029}\\
+\cmidrule{1-9}
+7 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.3806 & 0.0254 & 3.3311 & 3.4310 & 2768.2759 & 1.0012\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{8} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3571} & \cellcolor{gray!10}{0.0296} & \cellcolor{gray!10}{3.2984} & \cellcolor{gray!10}{3.4140} & \cellcolor{gray!10}{1379.6868} & \cellcolor{gray!10}{1.0074}\\
+\cmidrule{1-9}
+8 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.2751 & 0.0267 & 3.2244 & 3.3283 & 2854.0116 & 1.0020\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{9} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.4041} & \cellcolor{gray!10}{0.0293} & \cellcolor{gray!10}{3.3491} & \cellcolor{gray!10}{3.4627} & \cellcolor{gray!10}{1271.1247} & \cellcolor{gray!10}{1.0049}\\
+\cmidrule{1-9}
+9 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.3324 & 0.0258 & 3.2806 & 3.3817 & 2815.2929 & 1.0028\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{10} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.3516} & \cellcolor{gray!10}{0.0294} & \cellcolor{gray!10}{3.2965} & \cellcolor{gray!10}{3.4114} & \cellcolor{gray!10}{1478.7549} & \cellcolor{gray!10}{1.0054}\\
+\cmidrule{1-9}
+10 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.3014 & 0.0270 & 3.2465 & 3.3529 & 3173.7214 & 1.0031\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{11} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2649} & \cellcolor{gray!10}{0.0307} & \cellcolor{gray!10}{3.2067} & \cellcolor{gray!10}{3.3269} & \cellcolor{gray!10}{1402.4425} & \cellcolor{gray!10}{1.0059}\\
+\cmidrule{1-9}
+11 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.2469 & 0.0277 & 3.1960 & 3.3025 & 3155.6995 & 1.0054\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{12} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2751} & \cellcolor{gray!10}{0.0302} & \cellcolor{gray!10}{3.2165} & \cellcolor{gray!10}{3.3347} & \cellcolor{gray!10}{1624.8737} & \cellcolor{gray!10}{1.0080}\\
+\cmidrule{1-9}
+12 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.2372 & 0.0278 & 3.1845 & 3.2931 & 3409.3429 & 1.0040\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{13} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.2362} & \cellcolor{gray!10}{0.0306} & \cellcolor{gray!10}{3.1786} & \cellcolor{gray!10}{3.2976} & \cellcolor{gray!10}{1543.1565} & \cellcolor{gray!10}{1.0017}\\
+\cmidrule{1-9}
+13 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1669 & 0.0281 & 3.1147 & 3.2250 & 3602.2408 & 1.0012\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{14} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.1657} & \cellcolor{gray!10}{0.0312} & \cellcolor{gray!10}{3.1047} & \cellcolor{gray!10}{3.2274} & \cellcolor{gray!10}{1591.2969} & \cellcolor{gray!10}{1.0033}\\
+\cmidrule{1-9}
+14 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1169 & 0.0287 & 3.0609 & 3.1727 & 2901.9249 & 1.0031\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{15} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.1100} & \cellcolor{gray!10}{0.0320} & \cellcolor{gray!10}{3.0476} & \cellcolor{gray!10}{3.1722} & \cellcolor{gray!10}{1523.6995} & \cellcolor{gray!10}{1.0051}\\
+\cmidrule{1-9}
+15 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.0812 & 0.0292 & 3.0265 & 3.1408 & 3622.0703 & 1.0022\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{16} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.1434} & \cellcolor{gray!10}{0.0313} & \cellcolor{gray!10}{3.0816} & \cellcolor{gray!10}{3.2040} & \cellcolor{gray!10}{1657.9678} & \cellcolor{gray!10}{1.0024}\\
+\cmidrule{1-9}
+16 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1378 & 0.0291 & 3.0799 & 3.1946 & 3441.9939 & 1.0033\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{17} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.0862} & \cellcolor{gray!10}{0.0329} & \cellcolor{gray!10}{3.0201} & \cellcolor{gray!10}{3.1507} & \cellcolor{gray!10}{1733.3399} & \cellcolor{gray!10}{1.0012}\\
+\cmidrule{1-9}
+17 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1046 & 0.0297 & 3.0468 & 3.1630 & 3354.5449 & 1.0016\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{18} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.0766} & \cellcolor{gray!10}{0.0337} & \cellcolor{gray!10}{3.0109} & \cellcolor{gray!10}{3.1437} & \cellcolor{gray!10}{1525.3676} & \cellcolor{gray!10}{1.0033}\\
+\cmidrule{1-9}
+18 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1260 & 0.0299 & 3.0662 & 3.1831 & 3541.3043 & 1.0035\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{19} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.0311} & \cellcolor{gray!10}{0.0345} & \cellcolor{gray!10}{2.9639} & \cellcolor{gray!10}{3.0983} & \cellcolor{gray!10}{1557.5220} & \cellcolor{gray!10}{1.0021}\\
+\cmidrule{1-9}
+19 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1093 & 0.0302 & 3.0474 & 3.1660 & 3377.4158 & 1.0034\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{20} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.0550} & \cellcolor{gray!10}{0.0351} & \cellcolor{gray!10}{2.9850} & \cellcolor{gray!10}{3.1237} & \cellcolor{gray!10}{1552.6539} & \cellcolor{gray!10}{1.0046}\\
+\cmidrule{1-9}
+20 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1548 & 0.0304 & 3.0986 & 3.2167 & 3705.0969 & 1.0019\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{21} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3.0154} & \cellcolor{gray!10}{0.0360} & \cellcolor{gray!10}{2.9431} & \cellcolor{gray!10}{3.0836} & \cellcolor{gray!10}{1805.0175} & \cellcolor{gray!10}{1.0048}\\
+\cmidrule{1-9}
+21 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1188 & 0.0315 & 3.0573 & 3.1798 & 3733.8787 & 1.0018\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{22} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2.9682} & \cellcolor{gray!10}{0.0375} & \cellcolor{gray!10}{2.8953} & \cellcolor{gray!10}{3.0419} & \cellcolor{gray!10}{1666.1718} & \cellcolor{gray!10}{1.0045}\\
+\cmidrule{1-9}
+22 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1024 & 0.0319 & 3.0388 & 3.1650 & 3943.7347 & 1.0023\\
+\cmidrule{1-9}
+\cellcolor{gray!10}{23} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2.9981} & \cellcolor{gray!10}{0.0376} & \cellcolor{gray!10}{2.9226} & \cellcolor{gray!10}{3.0711} & \cellcolor{gray!10}{1622.9371} & \cellcolor{gray!10}{1.0024}\\
+\cmidrule{1-9}
+23 & Intercepto Temporal i.i.d. & Nao-Espacial & 3.1678 & 0.0323 & 3.1031 & 3.2292 & 3608.9286 & 1.0025\\*
+\end{longtabu}
+\endgroup{}
+\end{landscape}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{Trajetorias do Processo Latente
+\(\lambda\)}{Trajetorias do Processo Latente \textbackslash lambda}}\label{trajetorias-do-processo-latente-lambda}
+
+O processo latente Gamma-Poisson com desconto \(w\) representa o risco
+nao captado pelas covariaveis evoluindo no tempo. A faixa representa o
+HPD 95\%.
+
+\subsection{\texorpdfstring{Lambda Dinamico Regional
+(\(\lambda_{i,t}\))}{Lambda Dinamico Regional (\textbackslash lambda\_\{i,t\})}}\label{lambda-dinamico-regional-lambda_it}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\lambda_{i,t}$: espacial vs.\@ nao-espacial --- Lambda Dinamico Regional}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/lambda_comparativo.png}
+\end{figure}
+
+\subsection{\texorpdfstring{Lambda Compartilhado
+(\(\lambda_t\))}{Lambda Compartilhado (\textbackslash lambda\_t)}}\label{lambda-compartilhado-lambda_t}
+
+Processo latente unico, comum a todas as 75 microrregioes.
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\lambda_t$ compartilhado: espacial vs.\@ nao-espacial}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_lambda_shared/lambda_comparativo.png}
+\end{figure}
+
+\begingroup\fontsize{7}{9}\selectfont
+
+\begin{longtabu} to \linewidth {>{\raggedleft}X>{\raggedright}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X}
+\caption{\label{tab:tab-lambda-shared}Inferencia posterior de $\lambda_t$ (Lambda Compartilhado) por periodo.}\\
+\toprule
+Tempo & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endfirsthead
+\caption[]{Inferencia posterior de $\lambda_t$ (Lambda Compartilhado) por periodo. \textit{(continued)}}\\
+\toprule
+Tempo & Modelo & Media & DP & HPD 2.5\% & HPD 97.5\% & ESS & Rhat\\
+\midrule
+\endhead
+
+\endfoot
+\bottomrule
+\endlastfoot
+\cellcolor{gray!10}{1} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{31.4749} & \cellcolor{gray!10}{0.9480} & \cellcolor{gray!10}{29.8709} & \cellcolor{gray!10}{33.4437} & \cellcolor{gray!10}{865.9653} & \cellcolor{gray!10}{1.0006}\\
+\cmidrule{1-8}
+1 & Nao-Espacial & 29.8747 & 0.8358 & 28.5651 & 31.7076 & 1318.2180 & 1.0047\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{2} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{30.9042} & \cellcolor{gray!10}{0.9167} & \cellcolor{gray!10}{29.3256} & \cellcolor{gray!10}{32.7597} & \cellcolor{gray!10}{792.5654} & \cellcolor{gray!10}{1.0005}\\
+\cmidrule{1-8}
+2 & Nao-Espacial & 29.4166 & 0.8071 & 28.1505 & 31.1585 & 1285.0392 & 1.0046\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{3} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{30.5531} & \cellcolor{gray!10}{0.9007} & \cellcolor{gray!10}{29.0328} & \cellcolor{gray!10}{32.4276} & \cellcolor{gray!10}{767.7064} & \cellcolor{gray!10}{1.0006}\\
+\cmidrule{1-8}
+3 & Nao-Espacial & 29.1282 & 0.7909 & 27.8975 & 30.8216 & 1306.1878 & 1.0051\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{4} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{30.2500} & \cellcolor{gray!10}{0.8874} & \cellcolor{gray!10}{28.7918} & \cellcolor{gray!10}{32.1215} & \cellcolor{gray!10}{761.4726} & \cellcolor{gray!10}{1.0006}\\
+\cmidrule{1-8}
+4 & Nao-Espacial & 28.8678 & 0.7765 & 27.6892 & 30.5549 & 1289.1675 & 1.0048\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{5} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{29.9734} & \cellcolor{gray!10}{0.8757} & \cellcolor{gray!10}{28.4824} & \cellcolor{gray!10}{31.7665} & \cellcolor{gray!10}{773.3035} & \cellcolor{gray!10}{1.0007}\\
+\cmidrule{1-8}
+5 & Nao-Espacial & 28.6206 & 0.7666 & 27.4147 & 30.2421 & 1272.3678 & 1.0044\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{6} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{29.7126} & \cellcolor{gray!10}{0.8671} & \cellcolor{gray!10}{28.2807} & \cellcolor{gray!10}{31.5376} & \cellcolor{gray!10}{772.1262} & \cellcolor{gray!10}{1.0008}\\
+\cmidrule{1-8}
+6 & Nao-Espacial & 28.3742 & 0.7561 & 27.2355 & 30.0172 & 1266.2767 & 1.0043\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{7} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{29.4555} & \cellcolor{gray!10}{0.8567} & \cellcolor{gray!10}{28.0483} & \cellcolor{gray!10}{31.2539} & \cellcolor{gray!10}{761.3819} & \cellcolor{gray!10}{1.0008}\\
+\cmidrule{1-8}
+7 & Nao-Espacial & 28.1300 & 0.7492 & 27.0045 & 29.7392 & 1295.0498 & 1.0042\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{8} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{29.1930} & \cellcolor{gray!10}{0.8495} & \cellcolor{gray!10}{27.7995} & \cellcolor{gray!10}{30.9598} & \cellcolor{gray!10}{782.4912} & \cellcolor{gray!10}{1.0009}\\
+\cmidrule{1-8}
+8 & Nao-Espacial & 27.8736 & 0.7407 & 26.7480 & 29.4504 & 1287.0487 & 1.0044\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{9} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{28.9664} & \cellcolor{gray!10}{0.8423} & \cellcolor{gray!10}{27.5897} & \cellcolor{gray!10}{30.7257} & \cellcolor{gray!10}{772.8900} & \cellcolor{gray!10}{1.0010}\\
+\cmidrule{1-8}
+9 & Nao-Espacial & 27.6488 & 0.7336 & 26.5733 & 29.2273 & 1284.5120 & 1.0043\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{10} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{28.7358} & \cellcolor{gray!10}{0.8353} & \cellcolor{gray!10}{27.3826} & \cellcolor{gray!10}{30.4980} & \cellcolor{gray!10}{848.6381} & \cellcolor{gray!10}{1.0010}\\
+\cmidrule{1-8}
+10 & Nao-Espacial & 27.4155 & 0.7279 & 26.3369 & 28.9769 & 1279.1011 & 1.0044\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{11} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{28.5105} & \cellcolor{gray!10}{0.8289} & \cellcolor{gray!10}{27.1108} & \cellcolor{gray!10}{30.2023} & \cellcolor{gray!10}{846.9565} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+11 & Nao-Espacial & 27.1831 & 0.7211 & 26.1213 & 28.7482 & 1275.8304 & 1.0043\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{12} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{28.2937} & \cellcolor{gray!10}{0.8220} & \cellcolor{gray!10}{26.9440} & \cellcolor{gray!10}{30.0054} & \cellcolor{gray!10}{829.4496} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+12 & Nao-Espacial & 26.9625 & 0.7155 & 25.9259 & 28.5393 & 1280.7161 & 1.0040\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{13} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{28.0784} & \cellcolor{gray!10}{0.8157} & \cellcolor{gray!10}{26.7518} & \cellcolor{gray!10}{29.7772} & \cellcolor{gray!10}{831.5738} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+13 & Nao-Espacial & 26.7388 & 0.7107 & 25.6500 & 28.2412 & 1258.2979 & 1.0039\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{14} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.8731} & \cellcolor{gray!10}{0.8103} & \cellcolor{gray!10}{26.5801} & \cellcolor{gray!10}{29.5887} & \cellcolor{gray!10}{766.2313} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+14 & Nao-Espacial & 26.5330 & 0.7063 & 25.4445 & 28.0359 & 1267.3415 & 1.0042\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{15} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.6995} & \cellcolor{gray!10}{0.8068} & \cellcolor{gray!10}{26.3665} & \cellcolor{gray!10}{29.3615} & \cellcolor{gray!10}{778.2383} & \cellcolor{gray!10}{1.0012}\\
+\cmidrule{1-8}
+15 & Nao-Espacial & 26.3616 & 0.7030 & 25.2915 & 27.8689 & 1267.6348 & 1.0043\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{16} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.5581} & \cellcolor{gray!10}{0.8034} & \cellcolor{gray!10}{26.2320} & \cellcolor{gray!10}{29.2043} & \cellcolor{gray!10}{784.8575} & \cellcolor{gray!10}{1.0013}\\
+\cmidrule{1-8}
+16 & Nao-Espacial & 26.2257 & 0.7010 & 25.1499 & 27.7160 & 1273.1718 & 1.0040\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{17} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.4281} & \cellcolor{gray!10}{0.8000} & \cellcolor{gray!10}{26.0700} & \cellcolor{gray!10}{29.0456} & \cellcolor{gray!10}{790.1437} & \cellcolor{gray!10}{1.0012}\\
+\cmidrule{1-8}
+17 & Nao-Espacial & 26.1084 & 0.6983 & 25.0968 & 27.6619 & 1281.6860 & 1.0038\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{18} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.3237} & \cellcolor{gray!10}{0.7988} & \cellcolor{gray!10}{25.9914} & \cellcolor{gray!10}{28.9532} & \cellcolor{gray!10}{791.9284} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+18 & Nao-Espacial & 26.0144 & 0.6982 & 25.0249 & 27.5932 & 1251.3473 & 1.0035\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{19} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.2367} & \cellcolor{gray!10}{0.7978} & \cellcolor{gray!10}{25.8791} & \cellcolor{gray!10}{28.8380} & \cellcolor{gray!10}{795.8363} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+19 & Nao-Espacial & 25.9393 & 0.6960 & 24.8558 & 27.4014 & 1253.5701 & 1.0035\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{20} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.1720} & \cellcolor{gray!10}{0.7976} & \cellcolor{gray!10}{25.7894} & \cellcolor{gray!10}{28.7588} & \cellcolor{gray!10}{792.8732} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+20 & Nao-Espacial & 25.8863 & 0.6979 & 24.8192 & 27.3958 & 1261.9929 & 1.0037\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{21} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.1179} & \cellcolor{gray!10}{0.7990} & \cellcolor{gray!10}{25.7822} & \cellcolor{gray!10}{28.7501} & \cellcolor{gray!10}{825.5383} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+21 & Nao-Espacial & 25.8442 & 0.6987 & 24.7947 & 27.3790 & 1301.5413 & 1.0036\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{22} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.0807} & \cellcolor{gray!10}{0.8003} & \cellcolor{gray!10}{25.7584} & \cellcolor{gray!10}{28.7338} & \cellcolor{gray!10}{816.3062} & \cellcolor{gray!10}{1.0011}\\
+\cmidrule{1-8}
+22 & Nao-Espacial & 25.8175 & 0.7003 & 24.7260 & 27.3113 & 1275.7968 & 1.0037\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{23} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{27.0684} & \cellcolor{gray!10}{0.8025} & \cellcolor{gray!10}{25.7461} & \cellcolor{gray!10}{28.7521} & \cellcolor{gray!10}{804.6055} & \cellcolor{gray!10}{1.0012}\\
+\cmidrule{1-8}
+23 & Nao-Espacial & 25.8133 & 0.7039 & 24.7085 & 27.3168 & 1293.0379 & 1.0035\\*
+\end{longtabu}
+\endgroup{}
+
+\subsection{\texorpdfstring{\(\lambda_t\) --- Gamma
+Temporal}{\textbackslash lambda\_t --- Gamma Temporal}}\label{lambda_t-gamma-temporal}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\lambda_t$: espacial vs.\@ nao-espacial --- Gamma Temporal}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/lambda_comparativo.png}
+\end{figure}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{Trajetorias de
+\(\gamma_{k,t}\)}{Trajetorias de \textbackslash gamma\_\{k,t\}}}\label{trajetorias-de-gamma_kt}
+
+As especificacoes \textbf{Gamma Temporal} e \textbf{Intercepto Temporal
++ Gamma Temporal} estimam os pesos de cluster \(\gamma_{k,t}\) variando
+ao longo dos \(T\) periodos. A faixa representa o HPD 95\%; quando o
+comparativo (espacial vs.~nao-espacial) esta disponivel e suficiente, os
+paineis individuais sao omitidos.
+
+\subsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\gamma_{k,t}$: espacial vs.\@ nao-espacial --- Gamma Temporal}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/gamma_comparativo.png}
+\end{figure}
+
+\subsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-1}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\gamma_{k,t}$: espacial vs.\@ nao-espacial --- Intercepto Temporal + Gamma Temporal}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/gamma_comparativo.png}
+\end{figure}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{Diagnosticos MCMC}\label{diagnosticos-mcmc}
+
+\subsection{\texorpdfstring{Tabela resumo de ACF (\(\beta\) e
+\(\tau_s\))}{Tabela resumo de ACF (\textbackslash beta e \textbackslash tau\_s)}}\label{tabela-resumo-de-acf-beta-e-tau_s}
+
+\begin{landscape}
+\begingroup\fontsize{7}{9}\selectfont
+
+\begin{longtabu} to \linewidth {>{\raggedright}X>{\raggedright}X>{\raggedright}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X>{\raggedleft}X}
+\caption{\label{tab:tab-acf}Diagnostico de autocorrelacao ($\beta$, $\tau_s$).}\\
+\toprule
+Parametro & Especificacao & Modelo & ESS & Rhat & Lag<0.10 & Lag<0.05 & ACF lag1\\
+\midrule
+\endfirsthead
+\caption[]{Diagnostico de autocorrelacao ($\beta$, $\tau_s$). \textit{(continued)}}\\
+\toprule
+Parametro & Especificacao & Modelo & ESS & Rhat & Lag<0.10 & Lag<0.05 & ACF lag1\\
+\midrule
+\endhead
+
+\endfoot
+\bottomrule
+\endlastfoot
+\cellcolor{gray!10}{beta0} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{207.0233} & \cellcolor{gray!10}{1.0185} & \cellcolor{gray!10}{56} & \cellcolor{gray!10}{75} & \cellcolor{gray!10}{0.9431}\\
+\cmidrule{1-8}
+beta0 & Intercepto Fixo & Nao-Espacial & 333.2216 & 1.0039 & 30 & 35 & 0.9182\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2978.5194} & \cellcolor{gray!10}{0.9999} & \cellcolor{gray!10}{4} & \cellcolor{gray!10}{5} & \cellcolor{gray!10}{0.3940}\\
+\cmidrule{1-8}
+beta[1] & Gamma Temporal & Nao-Espacial & 6513.5672 & 0.9999 & 2 & 2 & 0.1023\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3813.3692} & \cellcolor{gray!10}{1.0001} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{4} & \cellcolor{gray!10}{0.3534}\\
+\cmidrule{1-8}
+beta[1] & Intercepto Fixo & Nao-Espacial & 5330.1759 & 1.0000 & 2 & 3 & 0.1608\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{1890.3345} & \cellcolor{gray!10}{1.0012} & \cellcolor{gray!10}{6} & \cellcolor{gray!10}{9} & \cellcolor{gray!10}{0.5627}\\
+\cmidrule{1-8}
+beta[1] & Intercepto Temporal i.i.d. & Nao-Espacial & 4549.3768 & 1.0000 & 2 & 3 & 0.2640\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{4768.4167} & \cellcolor{gray!10}{1.0007} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{0.2534}\\
+\cmidrule{1-8}
+beta[1] & Lambda Compartilhado & Nao-Espacial & 6913.9471 & 1.0010 & 1 & 2 & 0.0732\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[1]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2264.8858} & \cellcolor{gray!10}{0.9999} & \cellcolor{gray!10}{5} & \cellcolor{gray!10}{7} & \cellcolor{gray!10}{0.4641}\\
+\cmidrule{1-8}
+beta[1] & Lambda Dinamico Regional & Nao-Espacial & 2670.2449 & 1.0006 & 4 & 5 & 0.4166\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{6086.8179} & \cellcolor{gray!10}{1.0002} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{0.1211}\\
+\cmidrule{1-8}
+beta[2] & Gamma Temporal & Nao-Espacial & 7730.1120 & 0.9999 & 1 & 1 & 0.0225\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3150.8549} & \cellcolor{gray!10}{1.0004} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{4} & \cellcolor{gray!10}{0.4254}\\
+\cmidrule{1-8}
+beta[2] & Intercepto Fixo & Nao-Espacial & 5089.8369 & 1.0002 & 2 & 2 & 0.1853\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{1407.9414} & \cellcolor{gray!10}{1.0017} & \cellcolor{gray!10}{8} & \cellcolor{gray!10}{11} & \cellcolor{gray!10}{0.6743}\\
+\cmidrule{1-8}
+beta[2] & Intercepto Temporal i.i.d. & Nao-Espacial & 5215.3964 & 1.0007 & 2 & 3 & 0.2294\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{6435.5937} & \cellcolor{gray!10}{1.0002} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{0.1084}\\
+\cmidrule{1-8}
+beta[2] & Lambda Compartilhado & Nao-Espacial & 7738.5789 & 0.9999 & 1 & 1 & 0.0385\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[2]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2077.6418} & \cellcolor{gray!10}{1.0003} & \cellcolor{gray!10}{5} & \cellcolor{gray!10}{8} & \cellcolor{gray!10}{0.5243}\\
+\cmidrule{1-8}
+beta[2] & Lambda Dinamico Regional & Nao-Espacial & 2605.7025 & 1.0006 & 4 & 6 & 0.4823\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{4316.0879} & \cellcolor{gray!10}{1.0004} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{0.2992}\\
+\cmidrule{1-8}
+beta[3] & Gamma Temporal & Nao-Espacial & 6894.6334 & 1.0000 & 1 & 2 & 0.0742\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Intercepto Fixo} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{4229.6244} & \cellcolor{gray!10}{1.0016} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{0.2960}\\
+\cmidrule{1-8}
+beta[3] & Intercepto Fixo & Nao-Espacial & 6894.1252 & 1.0000 & 1 & 2 & 0.0523\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{3711.7953} & \cellcolor{gray!10}{1.0003} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{4} & \cellcolor{gray!10}{0.3358}\\
+\cmidrule{1-8}
+beta[3] & Intercepto Temporal i.i.d. & Nao-Espacial & 6387.2019 & 1.0000 & 1 & 2 & 0.0956\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Lambda Compartilhado} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{4734.3818} & \cellcolor{gray!10}{1.0002} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{0.2566}\\
+\cmidrule{1-8}
+beta[3] & Lambda Compartilhado & Nao-Espacial & 6902.1032 & 1.0008 & 1 & 2 & 0.0852\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{beta[3]} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2744.4635} & \cellcolor{gray!10}{1.0003} & \cellcolor{gray!10}{3} & \cellcolor{gray!10}{8} & \cellcolor{gray!10}{0.3205}\\
+\cmidrule{1-8}
+beta[3] & Lambda Dinamico Regional & Nao-Espacial & 5712.0412 & 1.0000 & 2 & 2 & 0.2061\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{tau\_s} & \cellcolor{gray!10}{Gamma Temporal} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{2498.1051} & \cellcolor{gray!10}{1.0001} & \cellcolor{gray!10}{5} & \cellcolor{gray!10}{9} & \cellcolor{gray!10}{0.2100}\\
+\cmidrule{1-8}
+tau\_s & Intercepto Fixo & Espacial & 5672.0046 & 1.0002 & 1 & 2 & 0.0873\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{tau\_s} & \cellcolor{gray!10}{Intercepto Temporal i.i.d.} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{6024.3086} & \cellcolor{gray!10}{1.0006} & \cellcolor{gray!10}{1} & \cellcolor{gray!10}{2} & \cellcolor{gray!10}{0.0793}\\
+\cmidrule{1-8}
+tau\_s & Lambda Compartilhado & Espacial & 6171.9289 & 1.0002 & 1 & 2 & 0.0939\\
+\cmidrule{1-8}
+\cellcolor{gray!10}{tau\_s} & \cellcolor{gray!10}{Lambda Dinamico Regional} & \cellcolor{gray!10}{Espacial} & \cellcolor{gray!10}{1613.3423} & \cellcolor{gray!10}{1.0014} & \cellcolor{gray!10}{9} & \cellcolor{gray!10}{14} & \cellcolor{gray!10}{0.2757}\\*
+\end{longtabu}
+\endgroup{}
+\end{landscape}
+
+\subsection{Traceplots por
+Especificacao}\label{traceplots-por-especificacao}
+
+\subsubsection{Especificacao: Intercepto
+Fixo}\label{especificacao-intercepto-fixo}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_fixo/spatial/traceplots.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_fixo/non_spatial/traceplots.png}
+\end{minipage}
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal
+i.i.d.}\label{especificacao-intercepto-temporal-i.i.d.-1}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/spatial/traceplots.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/non_spatial/traceplots.png}
+\end{minipage}
+\end{figure}
+
+\subsubsection{Especificacao: Lambda Dinamico
+Regional}\label{especificacao-lambda-dinamico-regional}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/spatial/traceplots.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/non_spatial/traceplots.png}
+\end{minipage}
+\end{figure}
+
+\subsubsection{Especificacao: Lambda
+Compartilhado}\label{especificacao-lambda-compartilhado}
+
+\textit{Traceplots nao encontrados.}
+
+\subsubsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal-1}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/traceplots_beta.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/traceplots_beta.png}
+\end{minipage}
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-2}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/traceplots_beta.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/traceplots_beta.png}
+\end{minipage}
+\end{figure}
+
+\subsection{\texorpdfstring{ACF de \(\beta\) por
+Especificacao}{ACF de \textbackslash beta por Especificacao}}\label{acf-de-beta-por-especificacao}
+
+\subsubsection{Especificacao: Intercepto
+Fixo}\label{especificacao-intercepto-fixo-1}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_fixo/spatial/acf_params.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_fixo/non_spatial/acf_params.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal
+i.i.d.}\label{especificacao-intercepto-temporal-i.i.d.-2}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/spatial/acf_params.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/non_spatial/acf_params.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsubsection{Especificacao: Lambda Dinamico
+Regional}\label{especificacao-lambda-dinamico-regional-1}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/spatial/acf_params.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/non_spatial/acf_params.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsubsection{Especificacao: Lambda
+Compartilhado}\label{especificacao-lambda-compartilhado-1}
+
+\begin{figure}[H]
+\centering
+\end{figure}
+
+\subsubsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal-2}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/acf_beta.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/acf_beta.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-3}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/acf_beta.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/acf_beta.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsection{\texorpdfstring{ACF de \(\beta_{0t}\) (especificacoes com
+intercepto
+temporal)}{ACF de \textbackslash beta\_\{0t\} (especificacoes com intercepto temporal)}}\label{acf-de-beta_0t-especificacoes-com-intercepto-temporal}
+
+\subsubsection{Especificacao: Intercepto Temporal
+i.i.d.}\label{especificacao-intercepto-temporal-i.i.d.-3}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/spatial/acf_params.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/non_spatial/acf_params.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-4}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/acf_beta0t.png}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\caption*{Nao-Espacial}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/acf_beta0t.png}
+\end{minipage}\hfill
+\end{figure}
+
+\subsection{\texorpdfstring{ACF de \(\lambda_t\) (especificacoes com
+lambda
+FFBS)}{ACF de \textbackslash lambda\_t (especificacoes com lambda FFBS)}}\label{acf-de-lambda_t-especificacoes-com-lambda-ffbs}
+
+\subsubsection{Especificacao: Lambda
+Compartilhado}\label{especificacao-lambda-compartilhado-2}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\lambda_t$ --- Lambda Compartilhado | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_lambda_shared/spatial/acf_lambda.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\lambda_t$ --- Lambda Compartilhado | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_lambda_shared/non_spatial/acf_lambda.png}
+\end{figure}
+
+\subsubsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal-3}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\lambda_t$ --- Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/acf_lambda.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\lambda_t$ --- Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/acf_lambda.png}
+\end{figure}
+
+\subsection{\texorpdfstring{ACF de \(\gamma_{k,t}\) (especificacoes com
+\(\gamma\)
+temporal)}{ACF de \textbackslash gamma\_\{k,t\} (especificacoes com \textbackslash gamma temporal)}}\label{acf-de-gamma_kt-especificacoes-com-gamma-temporal}
+
+\subsubsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal-4}
+
+\paragraph{Modelo: Espacial}\label{modelo-espacial}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{1,t}$ --- Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/acf_gamma_k1.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{2,t}$ --- Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/acf_gamma_k2.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{3,t}$ --- Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/acf_gamma_k3.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{4,t}$ --- Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/acf_gamma_k4.png}
+\end{figure}
+
+\paragraph{Modelo: Nao-Espacial}\label{modelo-nao-espacial}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{1,t}$ --- Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/acf_gamma_k1.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{2,t}$ --- Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/acf_gamma_k2.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{3,t}$ --- Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/acf_gamma_k3.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{4,t}$ --- Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/acf_gamma_k4.png}
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-5}
+
+\paragraph{Modelo: Espacial}\label{modelo-espacial-1}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{1,t}$ --- Intercepto Temporal + Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/acf_gamma_k1.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{2,t}$ --- Intercepto Temporal + Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/acf_gamma_k2.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{3,t}$ --- Intercepto Temporal + Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/acf_gamma_k3.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{4,t}$ --- Intercepto Temporal + Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/acf_gamma_k4.png}
+\end{figure}
+
+\paragraph{Modelo: Nao-Espacial}\label{modelo-nao-espacial-1}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{1,t}$ --- Intercepto Temporal + Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/acf_gamma_k1.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{2,t}$ --- Intercepto Temporal + Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/acf_gamma_k2.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{3,t}$ --- Intercepto Temporal + Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/acf_gamma_k3.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{ACF de $\gamma_{4,t}$ --- Intercepto Temporal + Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/non_spatial/acf_gamma_k4.png}
+\end{figure}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{Trajetorias Estimadas de
+\(\mu_{i,t}\)}{Trajetorias Estimadas de \textbackslash mu\_\{i,t\}}}\label{trajetorias-estimadas-de-mu_it}
+
+Trajetorias da media posterior de \(\mu_{i,t}\) com intervalo HPD 95\%
+para as 12 microrregioes selecionadas (3 por cluster), comparando os
+modelos espacial e nao-espacial. Cada especificacao ocupa uma pagina
+propria; o titulo aparece acima do grafico.
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\mu_{i,t}$: espacial vs.\@ nao-espacial --- Intercepto Fixo}}
+\includegraphics[width=\linewidth, height=0.78\textheight, keepaspectratio]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_fixo/mu_comparativo.png}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\mu_{i,t}$: espacial vs.\@ nao-espacial --- Intercepto Temporal i.i.d.}}
+\includegraphics[width=\linewidth, height=0.78\textheight, keepaspectratio]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/mu_comparativo.png}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\mu_{i,t}$: espacial vs.\@ nao-espacial --- Lambda Dinamico Regional}}
+\includegraphics[width=\linewidth, height=0.78\textheight, keepaspectratio]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/mu_comparativo.png}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\mu_{i,t}$: espacial vs.\@ nao-espacial --- Lambda Compartilhado}}
+\includegraphics[width=\linewidth, height=0.78\textheight, keepaspectratio]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_lambda_shared/mu_comparativo.png}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\mu_{i,t}$: espacial vs.\@ nao-espacial --- Gamma Temporal}}
+\includegraphics[width=\linewidth, height=0.78\textheight, keepaspectratio]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/mu_comparativo.png}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\mu_{i,t}$: espacial vs.\@ nao-espacial --- Intercepto Temporal + Gamma Temporal}}
+\includegraphics[width=\linewidth, height=0.78\textheight, keepaspectratio]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/mu_comparativo.png}
+\end{figure}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{Posterior de \(\varepsilon\) por
+Regiao}{Posterior de \textbackslash varepsilon por Regiao}}\label{posterior-de-varepsilon-por-regiao}
+
+\(\varepsilon_{i(t)} = 1 - \sum_k h_{ik}\,\gamma_{k(t)}\) representa o
+fator multiplicativo residual de risco de cada microrregiao. Para
+especificacoes com \(\gamma\) fixo no tempo, \(\varepsilon_i\) e
+constante; para especificacoes com \(\gamma_{k,t}\) temporal
+(\textbf{Gamma Temporal} e \textbf{Intercepto Temporal + Gamma
+Temporal}), \(\varepsilon_{i,t}\) e uma serie temporal apresentada em
+painel.
+
+\subsection{\texorpdfstring{\(\varepsilon_i\) estatico ---
+especificacoes com \(\gamma\) fixo no
+tempo}{\textbackslash varepsilon\_i estatico --- especificacoes com \textbackslash gamma fixo no tempo}}\label{varepsilon_i-estatico-especificacoes-com-gamma-fixo-no-tempo}
+
+\subsubsection{Especificacao: Intercepto
+Fixo}\label{especificacao-intercepto-fixo-2}
+
+\begin{center}\includegraphics[width=0.85\linewidth]{relatorio_dados_reais_1_3_files/figure-latex/epsilon-fixo-1} \end{center}
+
+\subsubsection{Especificacao: Intercepto Temporal
+i.i.d.}\label{especificacao-intercepto-temporal-i.i.d.-4}
+
+\begin{center}\includegraphics[width=0.85\linewidth]{relatorio_dados_reais_1_3_files/figure-latex/epsilon-fixo-2} \end{center}
+
+\subsubsection{Especificacao: Lambda Dinamico
+Regional}\label{especificacao-lambda-dinamico-regional-2}
+
+\begin{center}\includegraphics[width=0.85\linewidth]{relatorio_dados_reais_1_3_files/figure-latex/epsilon-fixo-3} \end{center}
+
+\subsubsection{Especificacao: Lambda
+Compartilhado}\label{especificacao-lambda-compartilhado-3}
+
+\begin{center}\includegraphics[width=0.85\linewidth]{relatorio_dados_reais_1_3_files/figure-latex/epsilon-fixo-4} \end{center}
+
+\subsection{\texorpdfstring{\(\varepsilon_{i,t}\) temporal ---
+especificacoes com \(\gamma_{k,t}\)
+variante}{\textbackslash varepsilon\_\{i,t\} temporal --- especificacoes com \textbackslash gamma\_\{k,t\} variante}}\label{varepsilon_it-temporal-especificacoes-com-gamma_kt-variante}
+
+\subsubsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal-5}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\varepsilon_{i,t}$ --- Gamma Temporal | Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/painel_epsilon.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\varepsilon_{i,t}$ --- Gamma Temporal | Nao-Espacial}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/non_spatial/painel_epsilon.png}
+\end{figure}
+
+\subsubsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-6}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{$\varepsilon_{i,t}$: espacial vs.\@ nao-espacial --- Intercepto Temporal + Gamma Temporal}}
+\includegraphics[width=\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/epsilon_comparativo.png}
+\end{figure}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{Efeito Espacial \(s_i\) (modelo
+espacial)}{Efeito Espacial s\_i (modelo espacial)}}\label{efeito-espacial-s_i-modelo-espacial}
+
+\subsection{Especificacao: Intercepto
+Fixo}\label{especificacao-intercepto-fixo-3}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{Efeito espacial $s_i$: media posterior e HPD 95\% --- Intercepto Fixo}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_fixo/spatial/s_posterior.png}
+\end{figure}
+
+\subsection{Especificacao: Intercepto Temporal
+i.i.d.}\label{especificacao-intercepto-temporal-i.i.d.-5}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{Efeito espacial $s_i$: media posterior e HPD 95\% --- Intercepto Temporal i.i.d.}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal/spatial/s_posterior.png}
+\end{figure}
+
+\subsection{Especificacao: Lambda Dinamico
+Regional}\label{especificacao-lambda-dinamico-regional-3}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{Efeito espacial $s_i$: media posterior e HPD 95\% --- Lambda Dinamico Regional}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_dados_reais/spatial/s_posterior.png}
+\end{figure}
+
+\subsection{Especificacao: Lambda
+Compartilhado}\label{especificacao-lambda-compartilhado-4}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{Efeito espacial $s_i$: media posterior e HPD 95\% --- Lambda Compartilhado}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_lambda_shared/spatial/s_posterior.png}
+\end{figure}
+
+\subsection{Especificacao: Gamma
+Temporal}\label{especificacao-gamma-temporal-6}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{Efeito espacial $s_i$: media posterior e HPD 95\% --- Gamma Temporal}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_gamma_temporal/spatial/s_posterior.png}
+\end{figure}
+
+\subsection{Especificacao: Intercepto Temporal + Gamma
+Temporal}\label{especificacao-intercepto-temporal-gamma-temporal-7}
+
+\begin{figure}[H]
+\centering
+\caption*{\textbf{Efeito espacial $s_i$: media posterior e HPD 95\% --- Intercepto Temporal + Gamma Temporal}}
+\includegraphics[width=0.90\linewidth]{C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_intercepto_temporal_gamma_t/spatial/s_posterior.png}
+\end{figure}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{Conclusao}\label{conclusao}
+
+Os resultados do ajuste dos modelos para obitos neonatais precoces em
+Minas Gerais permitem as seguintes observacoes:
+
+\begin{itemize}
+\item
+  \textbf{Selecao de modelo:} os criterios WAIC e LPML orientam a
+  escolha entre as seis especificacoes e entre os modelos espacial e
+  nao-espacial.
+\item
+  \textbf{Efeito das covariaveis (\(\beta\)):} os coeficientes de
+  prenatal inadequado, escolaridade materna e baixo peso ao nascer
+  indicam a direcao e magnitude da associacao com o risco de obito
+  neonatal precoce.
+\item
+  \textbf{Perfil de risco por cluster (\(\gamma\), \(\varepsilon\)):} os
+  parametros \(\gamma_k\) quantificam o excesso de risco por grupo de
+  microrregioes. Nas especificacoes com \(\gamma_{k,t}\) temporal (Gamma
+  Temporal e Intercepto Temporal + Gamma Temporal), a evolucao de
+  \(\gamma_{k,t}\) captura mudancas no perfil de vulnerabilidade ao
+  longo de 2000--2022, refletindo-se em \(\varepsilon_{i,t}\) dinamico.
+\item
+  \textbf{Tendencia temporal (\(\beta_{0t}\), \(\lambda_t\),
+  \(\lambda_{i,t}\)):} as especificacoes de intercepto temporal revelam
+  a evolucao do log-risco basal. O lambda dinamico regional e o mais
+  flexivel; o lambda compartilhado e mais parcimonioso; o intercepto
+  i.i.d. e intermediario. A combinacao \(\beta_{0t}\) + \(\gamma_{k,t}\)
+  na especificacao Intercepto Temporal + Gamma Temporal permite separar
+  a tendencia temporal global dos pesos de cluster dinamicos.
+\item
+  \textbf{Componente espacial (\(s_i\), \(\tau_s\)):} a presenca de
+  efeitos espaciais significativos indica clustering geografico
+  residual.
+\item
+  \textbf{Diagnosticos MCMC:} \(\hat{R} \approx 1\) e ESS adequado para
+  os parametros estruturais em todas as especificacoes.
+\end{itemize}
+
+\end{document}
