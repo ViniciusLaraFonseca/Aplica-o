@@ -3,7 +3,7 @@
 # ==============================================================================
 
 rm(list = ls())
-setwd("C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/PesquisaMestrado")
+setwd("C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Pesquisa/Aplicacao/main")
 
 # ==============================================================================
 # 0. PACOTES
@@ -86,12 +86,7 @@ total_raw <- read.csv(
 # Remover coluna "Total" e processar
 total <- total_raw[, -25] %>%
   dplyr::filter(!grepl("IGNORADO", Municipio, ignore.case = TRUE)) %>%
-  dplyr::rename(COD_Municipio_Reduzido = Municipio) %>%
-  dplyr::mutate(
-    COD_Municipio_Reduzido = stringr::str_extract(trimws(COD_Municipio_Reduzido), "^\\d+")
-  ) %>%
-  dplyr::filter(!is.na(COD_Municipio_Reduzido)) %>%
-  dplyr::select(-starts_with("X")) %>%
+  extrair_codigo() %>%
   safe_numeric() %>%
   tidyr::pivot_longer(
     cols = -COD_Municipio_Reduzido,
@@ -140,11 +135,7 @@ process_cov <- function(path) {
   
   df <- df_raw[, -25] %>%
     dplyr::filter(!grepl("IGNORADO", Municipio, ignore.case = TRUE)) %>%
-    dplyr::rename(COD_Municipio_Reduzido = Municipio) %>%
-    dplyr::mutate(
-      COD_Municipio_Reduzido = stringr::str_extract(trimws(COD_Municipio_Reduzido), "^\\d+")
-    ) %>%
-    dplyr::filter(!is.na(COD_Municipio_Reduzido)) %>%
+    extrair_codigo() %>%
     safe_numeric() %>%
     tidyr::pivot_longer(
       cols = -COD_Municipio_Reduzido,
@@ -226,11 +217,7 @@ obitos_clean <- obitos_raw %>%
     !grepl("^\\s*Total", Municipio, ignore.case = TRUE),
     !grepl("IGNORADO", Municipio, ignore.case = TRUE)
   ) %>%
-  dplyr::rename(COD_Municipio_Reduzido = Municipio) %>%
-  dplyr::mutate(
-    COD_Municipio_Reduzido = stringr::str_extract(trimws(COD_Municipio_Reduzido), "^\\d+")
-  ) %>%
-  dplyr::filter(!is.na(COD_Municipio_Reduzido)) %>%
+  extrair_codigo() %>%
   dplyr::select(COD_Municipio_Reduzido, dplyr::all_of(anos_cols)) %>%
   safe_numeric() %>%
   tidyr::pivot_longer(
