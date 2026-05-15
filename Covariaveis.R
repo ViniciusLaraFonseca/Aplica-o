@@ -168,9 +168,6 @@ x[,,1] <- as.matrix(grouped_consultas_MG[, -1])
 x[,,2] <- as.matrix(grouped_instrucao_MG[, -1])
 x[,,3] <- as.matrix(grouped_subnutridos_MG[, -1])
 
-for (k in 1:3) {
-  x[,,k] <- x[,,k] - mean(x[,,k], na.rm = TRUE)
-}
 
 # ==============================================================================
 # 8. OFFSET E
@@ -238,3 +235,4 @@ if (!all(dim(E) == c(75, 23))) stop("❌ Dimensão de E incorreta")
 if (!all(dim(x) == c(75, 23, 3))) stop("❌ Dimensão de x incorreta")
 
 cat("✅ Dados prontos e consistentes para o modelo.\n")
+setwd("C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/main")
