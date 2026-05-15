@@ -234,3 +234,5 @@ if (!all(dim(E) == c(75, 23))) stop("❌ Dimensão de E incorreta")
 if (!all(dim(x) == c(75, 23, 3))) stop("❌ Dimensão de x incorreta")
 
 cat("✅ Dados prontos e consistentes para o modelo.\n")
+
+setwd("C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/main")
