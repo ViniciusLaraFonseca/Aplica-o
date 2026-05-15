@@ -168,10 +168,6 @@ x[,,1] <- as.matrix(grouped_consultas_MG[, -1])
 x[,,2] <- as.matrix(grouped_instrucao_MG[, -1])
 x[,,3] <- as.matrix(grouped_subnutridos_MG[, -1])
 
-for (k in 1:3) {
-  x[,,k] <- x[,,k] - mean(x[,,k], na.rm = TRUE)
-}
-
 # ==============================================================================
 # 8. OFFSET E
 # ==============================================================================
