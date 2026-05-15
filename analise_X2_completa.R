@@ -36,7 +36,7 @@ X2_long <- as.data.frame(x[,,2]) %>%
 # ==============================================================================
 
 p_X2_all <- ggplot(X2_long, aes(x = Ano, y = X2_Instrucao, color = Microrregiao)) +
-  geom_line(size = 0.7, alpha = 0.8) +
+  geom_line(linewidth = 0.7, alpha = 0.8) +
   geom_point(size = 1.5) +
   facet_wrap(~Microrregiao, scales = "free_y", ncol = 8) +
   labs(
@@ -54,7 +54,7 @@ p_X2_all <- ggplot(X2_long, aes(x = Ano, y = X2_Instrucao, color = Microrregiao)
     axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
     axis.text.y = element_text(size = 7),
     strip.text = element_text(size = 8, face = "bold"),
-    panel.grid.major = element_line(color = "gray90", size = 0.3),
+    panel.grid.major = element_line(color = "gray90", linewidth = 0.3),
     panel.grid.minor = element_blank()
   )
 
@@ -125,7 +125,7 @@ cat("EVOLUCAO TEMPORAL: MUDANCAS DE 2000 PARA 2022\n")
 cat("================================================================================\n\n")
 
 X2_evolucao <- X2_long %>%
-  dplyr::pivot_wider(names_from = Ano, values_from = X2_Instrucao) %>%
+  tidyr::pivot_wider(names_from = Ano, values_from = X2_Instrucao) %>%
   dplyr::mutate(
     Mudanca_Absoluta = `2022` - `2000`,
     Mudanca_Relativa = (((`2022` - `2000`) / `2000`) * 100)
