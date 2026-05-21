@@ -1,0 +1,755 @@
+---
+title: "Análise de Óbitos Neonatais Precoces em Minas Gerais"
+subtitle: "Modelos Bayesianos Espaço-Estados — Sete Especificações Comparadas"
+author: "Vinicius Fonseca"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    latex_engine: pdflatex
+    keep_tex: false
+    extra_dependencies: ["float", "graphicx", "booktabs", "longtable",
+                         "caption", "subcaption", "array", "amsmath", "amssymb"]
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = FALSE,
+  warning   = FALSE,
+  message   = FALSE,
+  fig.align = "center",
+  out.width = "85%"
+)
+options(kableExtra.latex.load_packages = FALSE)
+options(kableExtra.longtable.latex.environment = "longtable")
+library(dplyr)
+library(readr)
+library(knitr)
+library(kableExtra)
+library(purrr)
+library(stringr)
+library(tibble)
+library(janitor)
+library(ggplot2)
+
+root_dir <- "C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação"
+knitr::opts_knit$set(root.dir = root_dir)
+```
+
+---
+
+# Introdução
+
+Este relatório apresenta uma análise abrangente de óbitos neonatais precoces nas 75 microrregiões de Minas Gerais, período 2000-2022. O trabalho integra:
+
+1. **Análise Descritiva Inicial:** exploração de dados, distribuições e estrutura
+2. **Sete Especificações de Modelos Bayesianos:** M1 a M7, variando intercepto, componente temporal e pesos de cluster
+3. **Comparação de Critérios:** WAIC, LPML, diagnósticos MCMC, inferência posterior
+
+## Descrição Geral dos Dados
+
+- **Regiões:** $A = 75$ microrregiões de MG
+- **Tempo:** $T = 23$ anos (2000--2022)
+- **Clusters:** $K = 4$ (para M1-M5) e $K = 8$ (para M6-M7)
+- **Covariáveis:** $p = 3$ (prenatal inadequado, escolaridade materna, baixo peso)
+- **Variável resposta:** $Y_{i,t}$ = contagens de óbitos por microrregião $i$ e ano $t$
+- **Offset:** $E_{i,t}$ = número de nascidos vivos (população em risco)
+
+```{r index-models}
+# Tabela de especificações M1-M7
+especificacoes <- list(
+  list(dir = "resultados_intercepto_fixo",
+       label = "M1",
+       nome_completo = "Intercepto Fixo",
+       tag = "fixo",
+       K = 4,
+       descricao = "log(μ) = β₀ + offset + log(ε_i)"),
+  
+  list(dir = "resultados_intercepto_temporal",
+       label = "M2",
+       nome_completo = "Intercepto Temporal (i.i.d.)",
+       tag = "temporal",
+       K = 4,
+       descricao = "log(μ) = β₀ₜ + offset + log(ε_i), β₀ₜ ~ N(0,1)"),
+  
+  list(dir = "resultados_lambda_shared",
+       label = "M3",
+       nome_completo = "Lambda Compartilhado (FFBS)",
+       tag = "lambda_shared",
+       K = 4,
+       descricao = "log(μ) = log(λₜ) + offset + log(ε_i), λₜ ~ Ga(aₜ,bₜ)"),
+  
+  list(dir = "resultados_gamma_temporal",
+       label = "M4",
+       nome_completo = "Gamma Temporal (K=4)",
+       tag = "gamma_temporal",
+       K = 4,
+       descricao = "log(μ) = log(λₜ) + offset + log(ε_{i,t}), γ_{k,t} temporal"),
+  
+  list(dir = "resultados_intercepto_temporal_gamma_t",
+       label = "M5",
+       nome_completo = "Intercepto Temporal + Gamma (K=4)",
+       tag = "temporal_gamma_t",
+       K = 4,
+       descricao = "log(μ) = β₀ₜ + offset + log(ε_{i,t}), β₀ₜ ~ N(0,1), γ_{k,t} temporal"),
+  
+  list(dir = "resultados_gamma_temporal_K8",
+       label = "M6",
+       nome_completo = "Gamma Temporal (K=8) — Padrão Ouro",
+       tag = "gamma_temporal_K8",
+       K = 8,
+       descricao = "log(μ) = log(λₜ) + offset + log(ε_{i,t}), K=8 clusters, γ₁ₜ tempo-variante"),
+  
+  list(dir = "resultados_intercepto_temporal_gamma_t_K8",
+       label = "M7",
+       nome_completo = "Intercepto + Gamma (K=8) — Padrão Ouro",
+       tag = "temporal_gamma_t_K8",
+       K = 8,
+       descricao = "log(μ) = β₀ₜ + offset + log(ε_{i,t}), K=8 clusters, γ₁ₜ tempo-variante")
+)
+
+MODEL_TYPES <- c("spatial", "non_spatial")
+
+# Tags com componentes especiais
+TAGS_GAMMA_T  <- c("gamma_temporal", "temporal_gamma_t", "gamma_temporal_K8", "temporal_gamma_t_K8")
+TAGS_BETA0T   <- c("temporal", "temporal_gamma_t", "temporal_gamma_t_K8")
+TAGS_BETA_ACF <- c("lambda_shared", "gamma_temporal", "temporal_gamma_t", 
+                   "gamma_temporal_K8", "temporal_gamma_t_K8")
+TAGS_K8       <- c("gamma_temporal_K8", "temporal_gamma_t_K8")
+
+resultados <- map_dfr(especificacoes, function(esp) {
+  map_dfr(MODEL_TYPES, function(m) {
+    pasta <- file.path(esp$dir, m)
+    if (!dir.exists(pasta)) return(NULL)
+    tibble(pasta      = pasta,
+           modelo     = m,
+           spec_dir   = esp$dir,
+           spec_label = esp$label,
+           spec_nome  = esp$nome_completo,
+           spec_tag   = esp$tag,
+           K_clusters = esp$K,
+           descricao  = esp$descricao)
+  })
+})
+```
+
+```{r helpers}
+safe_read <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  tryCatch(
+    read_csv(path, show_col_types = FALSE) |>
+      clean_names() |>
+      mutate(across(where(is.character), trimws)),
+    error = function(e) NULL
+  )
+}
+
+fmt_tbl <- function(df, caption, col_names = NULL) {
+  kable(df, digits = 4, booktabs = TRUE, caption = caption,
+        col.names = col_names %||% colnames(df),
+        linesep = "", escape = FALSE) |>
+    kable_styling(latex_options = c("hold_position"),
+                  font_size = 9)
+}
+
+fmt_tbl_long <- function(df, caption, col_names = NULL) {
+  kable(df, digits = 4, booktabs = TRUE, caption = caption,
+        col.names = col_names %||% colnames(df),
+        linesep = "", escape = FALSE, longtable = TRUE) |>
+    kable_styling(latex_options = c("repeat_header", "scale_down"),
+                  font_size = 7)
+}
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+label_modelo <- function(m) ifelse(m == "spatial", "Espacial", "Não-espacial")
+
+greek_param <- function(x) {
+  x <- str_replace_all(x, "^beta\\[(\\d+)\\]$",        "$\\\\beta_{\\1}$")
+  x <- str_replace_all(x, "^gamma\\[(\\d+)\\]$",       "$\\\\gamma_{\\1}$")
+  x <- str_replace_all(x, "^gamma\\[(\\d+), t\\].*$",  "$\\\\gamma_{\\1,t}$")
+  x <- str_replace_all(x, "^tau_s$",                   "$\\\\tau_s$")
+  x <- str_replace_all(x, "^sigma_s$",                 "$\\\\sigma_s$")
+  x <- str_replace_all(x, "^beta0t\\[(\\d+)\\]$",      "$\\\\beta_{0,\\1}$")
+  x <- str_replace_all(x, "^lambda\\[(\\d+)\\]$",      "$\\\\lambda_{\\1}$")
+  x
+}
+
+fig_top <- function(img, titulo, width = "0.90\\linewidth") {
+  cat("\\begin{figure}[H]\n\\centering\n")
+  cat("\\caption*{\\textbf{", titulo, "}}\n", sep = "")
+  cat("\\includegraphics[width=", width, "]{", img, "}\n", sep = "")
+  cat("\\end{figure}\n\n")
+}
+
+fig_comparativo_ou_individual <- function(dir_base, nome_comp, nome_ind, titulo_comp,
+                                          titulo_ind_fn, width_comp = "\\linewidth") {
+  img_comp <- normalizePath(file.path(root_dir, dir_base, nome_comp),
+                             winslash = "/", mustWork = FALSE)
+  if (file.exists(img_comp)) {
+    fig_top(img_comp, titulo_comp, width = width_comp)
+  } else {
+    for (m in MODEL_TYPES) {
+      img <- normalizePath(file.path(root_dir, dir_base, m, nome_ind),
+                           winslash = "/", mustWork = FALSE)
+      if (file.exists(img)) fig_top(img, titulo_ind_fn(m))
+    }
+  }
+}
+```
+
+---
+
+# Análise Descritiva Preliminar
+
+## Estrutura dos Dados
+
+```{r desc-estrutura}
+# Simular dados para demonstração (em uso real, carregar via _dataCaseStudy.r)
+cat("Dimensões do problema:\n")
+cat("- Y_mat (óbitos): 75 microrregiões × 23 anos\n")
+cat("- E (nascidos vivos): 75 × 23\n")
+cat("- x (covariáveis): 75 × 23 × 3\n\n")
+
+cat("Estrutura do modelo:\n")
+cat("  Verossimilhança: Y_{i,t} | μ_{i,t} ~ Poisson(μ_{i,t})\n")
+cat("  Preditor: log(μ_{i,t}) = ... componentes variam por especificação ...\n")
+cat("  Estagio especial (M6-M7): priori tempo-variante para γ₁,ₜ\n")
+cat("    • t=1..10:   γ₁,ₜ ~ Unif(0.05, 0.15)  [âncora restrita]\n")
+cat("    • t=11..17:  γ₁,ₜ ~ Unif(0.00, 0.10)  [âncora moderada]\n")
+cat("    • t=18..23:  γ₁,ₜ ~ Unif(0.00, 0.05)  [âncora difusa]\n")
+```
+
+## Resumo das Sete Especificações
+
+```{r desc-modelos}
+tbl_modelos <- tibble(
+  ID = c("M1", "M2", "M3", "M4", "M5", "M6", "M7"),
+  Especificação = c("Intercepto Fixo", "Intercepto Temporal", "Lambda Compartilhado",
+                    "Gamma Temporal (K=4)", "Intercepto + Gamma (K=4)",
+                    "Gamma Temporal (K=8)", "Intercepto + Gamma (K=8)"),
+  `Comp. Temporal` = c("β₀", "β₀ₜ", "λₜ", "λₜ + γₖₜ", "β₀ₜ + γₖₜ", "λₜ + γₖₜ", "β₀ₜ + γₖₜ"),
+  K = c(4, 4, 4, 4, 4, 8, 8),
+  Priori = c("N(0,1)", "N(0,1)", "Ga(a,b)", "Tempo-variante", "Tempo-variante",
+             "Tempo-variante*", "Tempo-variante*")
+)
+tbl_modelos |>
+  fmt_tbl("Sete especificações de modelos. *M6-M7 possuem priori diferenciada para γ₁,ₜ.")
+```
+
+---
+
+# Critérios de Informação — WAIC e LPML
+
+Valores menores indicam melhor ajuste preditivo penalizado pela complexidade.
+
+```{r tab-criteria, results='asis'}
+tabela_criterios <- map_dfr(seq_len(nrow(resultados)), function(i) {
+  dados <- safe_read(file.path(resultados$pasta[i], "criteria.csv"))
+  if (is.null(dados)) return(NULL)
+  tibble(Modelo = resultados$spec_label[i],
+         Tipo = label_modelo(resultados$modelo[i]),
+         WAIC = dados$waic,
+         LPML = dados$lpml,
+         lppd = dados$lppd,
+         `p-WAIC` = dados$p_waic)
+})
+
+if (nrow(tabela_criterios) > 0) {
+  tabela_criterios |>
+    arrange(WAIC) |>
+    fmt_tbl("Critérios de informação por especificação (ordenado por WAIC).")
+} else {
+  cat("\\textit{Nenhum arquivo criteria.csv encontrado.}\n")
+}
+```
+
+---
+
+# Resultados Inferenciais — Parâmetros Estruturais
+
+## Covariáveis $\boldsymbol{\beta}$
+
+As três covariáveis foram centradas em relação à sua média global:
+- $\beta_1$: Prenatal inadequado
+- $\beta_2$: Escolaridade materna
+- $\beta_3$: Baixo peso ao nascer
+
+```{r tab-beta, results='asis'}
+tabela_betas <- map_dfr(seq_len(nrow(resultados)), function(i) {
+  dados <- safe_read(file.path(resultados$pasta[i], "beta_summary.csv"))
+  if (is.null(dados)) return(NULL)
+  dados |>
+    mutate(Modelo = resultados$spec_label[i],
+           Tipo = label_modelo(resultados$modelo[i])) |>
+    select(Modelo, Tipo, parameter,
+           any_of(c("mean", "sd", "hpd_lower", "hpd_upper", "ess", "rhat")))
+})
+
+if (nrow(tabela_betas) > 0) {
+  tbl <- tabela_betas |>
+    rename(Parametro = parameter) |>
+    mutate(Parametro = greek_param(Parametro)) |>
+    arrange(Modelo, Tipo, Parametro) |>
+    rename(`$\\mu$` = mean, `$\\sigma$` = sd,
+           `$q_{2.5}$` = hpd_lower, `$q_{97.5}$` = hpd_upper,
+           `$n_{ef}$` = ess, `$\\hat{R}$` = rhat) |>
+    fmt_tbl_long("Inferência posterior de $\\boldsymbol{\\beta}$ (covariáveis).")
+  tbl
+} else {
+  cat("\\textit{Nenhum arquivo beta\\_summary.csv encontrado.}\n")
+}
+```
+
+## Intercepto Fixo $\beta_0$ (M1 apenas)
+
+```{r tab-beta0, results='asis'}
+tabela_beta0 <- map_dfr(seq_len(nrow(resultados)), function(i) {
+  if (resultados$spec_tag[i] != "fixo") return(NULL)
+  dados <- safe_read(file.path(resultados$pasta[i], "beta0_summary.csv"))
+  if (is.null(dados)) return(NULL)
+  dados |>
+    mutate(Tipo = label_modelo(resultados$modelo[i])) |>
+    select(Tipo, any_of(c("mean", "sd", "hpd_lower", "hpd_upper", "ess", "rhat")))
+})
+
+if (nrow(tabela_beta0) > 0) {
+  tabela_beta0 |>
+    arrange(Tipo) |>
+    rename(`$\\mu$` = mean, `$\\sigma$` = sd,
+           `$q_{2.5}$` = hpd_lower, `$q_{97.5}$` = hpd_upper,
+           `$n_{ef}$` = ess, `$\\hat{R}$` = rhat) |>
+    fmt_tbl("Inferência posterior do intercepto fixo $\\beta_0$ (M1).")
+} else {
+  cat("\\textit{Nenhum arquivo beta0\\_summary.csv encontrado.}\n")
+}
+```
+
+## Parâmetros de Cluster $\boldsymbol{\gamma}$
+
+Para M1--M4, $\gamma$ é fixo no tempo. Para M5--M7, $\gamma_{k,t}$ é temporal; a tabela exibe a m��dia das métricas sobre os $T$ períodos.
+
+```{r tab-gamma, results='asis'}
+tabela_gammas <- map_dfr(seq_len(nrow(resultados)), function(i) {
+  dados <- safe_read(file.path(resultados$pasta[i], "gamma_summary.csv"))
+  if (is.null(dados)) return(NULL)
+
+  is_gt <- resultados$spec_tag[i] %in% TAGS_GAMMA_T
+
+  if (is_gt) {
+    if (!"k" %in% names(dados)) return(NULL)
+    dados |>
+      group_by(k) |>
+      summarise(
+        mean  = mean(mean,  na.rm = TRUE),
+        sd    = mean(sd,    na.rm = TRUE),
+        lower = mean(lower, na.rm = TRUE),
+        upper = mean(upper, na.rm = TRUE),
+        ess   = mean(ess,   na.rm = TRUE),
+        rhat  = mean(rhat,  na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        Parametro = paste0("$\\\\bar{\\\\gamma}_{", k, "}$ (média temporal)"),
+        Modelo = resultados$spec_label[i],
+        Tipo = label_modelo(resultados$modelo[i])
+      ) |>
+      select(Modelo, Tipo, Parametro, mean, sd, lower, upper, ess, rhat)
+  } else {
+    if (!"parameter" %in% names(dados)) return(NULL)
+    hpd_l <- if ("hpd_lower" %in% names(dados)) "hpd_lower" else "lower"
+    hpd_u <- if ("hpd_upper" %in% names(dados)) "hpd_upper" else "upper"
+    dados |>
+      rename(lower = all_of(hpd_l), upper = all_of(hpd_u)) |>
+      mutate(
+        Parametro = parameter,
+        Modelo = resultados$spec_label[i],
+        Tipo = label_modelo(resultados$modelo[i])
+      ) |>
+      select(Modelo, Tipo, Parametro, mean, sd, lower, upper, ess, rhat)
+  }
+})
+
+if (nrow(tabela_gammas) > 0) {
+  tbl <- tabela_gammas |>
+    mutate(Parametro = greek_param(Parametro)) |>
+    arrange(Modelo, Tipo, Parametro) |>
+    rename(`$\\mu$` = mean, `$\\sigma$` = sd,
+           `$q_{2.5}$` = lower, `$q_{97.5}$` = upper,
+           `$n_{ef}$` = ess, `$\\hat{R}$` = rhat) |>
+    fmt_tbl_long("Inferência posterior de $\\boldsymbol{\\gamma}$.")
+  tbl
+} else {
+  cat("\\textit{Nenhum arquivo gamma\\_summary.csv encontrado.}\n")
+}
+```
+
+## Precisão Espacial $\tau_s$ (modelos espaciais)
+
+```{r tab-tau, results='asis'}
+tabela_tau <- map_dfr(seq_len(nrow(resultados)), function(i) {
+  if (resultados$modelo[i] != "spatial") return(NULL)
+  dados <- safe_read(file.path(resultados$pasta[i], "tau_summary.csv"))
+  if (is.null(dados)) return(NULL)
+  dados |>
+    mutate(Modelo = resultados$spec_label[i]) |>
+    select(Modelo, any_of(c("mean", "sd", "hpd_lower", "hpd_upper",
+                            "lower", "upper", "ess", "rhat")))
+})
+
+if (nrow(tabela_tau) > 0) {
+  if ("hpd_lower" %in% names(tabela_tau)) {
+    tabela_tau <- tabela_tau |>
+      rename(`$q_{2.5}$` = hpd_lower, `$q_{97.5}$` = hpd_upper)
+  } else {
+    tabela_tau <- tabela_tau |>
+      rename(`$q_{2.5}$` = lower, `$q_{97.5}$` = upper)
+  }
+  tabela_tau |>
+    arrange(Modelo) |>
+    rename(`$\\mu$` = mean, `$\\sigma$` = sd,
+           `$n_{ef}$` = ess, `$\\hat{R}$` = rhat) |>
+    fmt_tbl("Inferência posterior de $\\tau_s$ (componente espacial).")
+} else {
+  cat("\\textit{Nenhum arquivo tau\\_summary.csv encontrado.}\n")
+}
+```
+
+---
+
+# Componentes Temporais
+
+## Intercepto Temporal $\beta_{0t}$ (M2, M5, M7)
+
+O intercepto $\beta_{0t}$ i.i.d. captura a evolução do risco basal ao longo do tempo.
+
+```{r beta0t-graficos, results='asis'}
+for (esp in especificacoes) {
+  if (!esp$tag %in% TAGS_BETA0T) next
+  cat("\n\n### Especificação:", esp$label, "---", esp$nome_completo, "\n\n")
+
+  fig_comparativo_ou_individual(
+    dir_base     = esp$dir,
+    nome_comp    = "beta0t_comparativo.png",
+    nome_ind     = "painel_beta0t.png",
+    titulo_comp  = paste0("β₀ₜ: Espacial vs. Não-espacial (", esp$label, ")"),
+    titulo_ind_fn = function(m) paste0("β₀ₜ — ", esp$label, " | ", label_modelo(m)),
+    width_comp   = "\\linewidth"
+  )
+}
+```
+
+## Lambda Compartilhado $\lambda_t$ (M3 e M4)
+
+Processo latente Gamma-Poisson com desconto $w$, representando o risco não captado pelas covariáveis.
+
+```{r lambda-graficos, results='asis'}
+for (esp in especificacoes) {
+  if (!esp$tag %in% c("lambda_shared", "gamma_temporal", "gamma_temporal_K8")) next
+  cat("\n\n### Especificação:", esp$label, "---", esp$nome_completo, "\n\n")
+
+  fig_comparativo_ou_individual(
+    dir_base     = esp$dir,
+    nome_comp    = "lambda_comparativo.png",
+    nome_ind     = "painel_lambda.png",
+    titulo_comp  = paste0("λₜ: Espacial vs. Não-espacial (", esp$label, ")"),
+    titulo_ind_fn = function(m) paste0("λₜ — ", esp$label, " | ", label_modelo(m)),
+    width_comp   = "\\linewidth"
+  )
+}
+```
+
+---
+
+# Trajetórias de $\gamma_{k,t}$ — Componente Temporal de Clusters (M4--M7)
+
+M4--M7 estimam os pesos de cluster $\gamma_{k,t}$ variando ao longo do tempo. A faixa representa o HPD 95%.
+
+```{r gamma-kt-painel, results='asis'}
+for (esp in especificacoes) {
+  if (!esp$tag %in% TAGS_GAMMA_T) next
+  cat("\n\n## Especificação:", esp$label, "---", esp$nome_completo, "\n\n")
+  
+  if (esp$tag %in% TAGS_K8) {
+    cat("**Nota:** K=8 clusters com priori tempo-variante para γ₁,ₜ.\n\n")
+  }
+
+  fig_comparativo_ou_individual(
+    dir_base     = esp$dir,
+    nome_comp    = "gamma_comparativo.png",
+    nome_ind     = "painel_gamma.png",
+    titulo_comp  = paste0("γₖ,ₜ: Espacial vs. Não-espacial (", esp$label, ")"),
+    titulo_ind_fn = function(m) paste0("γₖ,ₜ — ", esp$label, " | ", label_modelo(m)),
+    width_comp   = "\\linewidth"
+  )
+}
+```
+
+---
+
+# Posterior de $\varepsilon$ por Região
+
+$\varepsilon_{i(t)} = 1 - \sum_k h_{ik}\,\gamma_{k(t)}$ representa o fator multiplicativo residual de risco. Para M1--M3, $\varepsilon_i$ é constante; para M4--M7, $\varepsilon_{i,t}$ é temporal.
+
+## $\varepsilon_i$ Estático (M1--M3)
+
+```{r epsilon-fixo, results='asis'}
+for (esp in especificacoes) {
+  if (esp$tag %in% TAGS_GAMMA_T) next   # tratado abaixo
+
+  eps_list <- lapply(MODEL_TYPES, function(m) {
+    df <- safe_read(file.path(esp$dir, m, "epsilon_summary.csv"))
+    if (is.null(df)) return(NULL)
+    df |> mutate(Tipo = label_modelo(m))
+  })
+  eps_df <- bind_rows(eps_list)
+  if (is.null(eps_df) || nrow(eps_df) == 0) next
+  if ("time" %in% names(eps_df)) next
+
+  col_y  <- if ("eps_mean"  %in% names(eps_df)) "eps_mean"  else "mean"
+  col_lo <- if ("eps_lower" %in% names(eps_df)) "eps_lower" else "lower"
+  col_hi <- if ("eps_upper" %in% names(eps_df)) "eps_upper" else "upper"
+
+  cat("\n\n### Especificação:", esp$label, "\n\n")
+  p <- ggplot(eps_df,
+              aes(x = region, y = .data[[col_y]],
+                  color = factor(cluster))) +
+    geom_point(size = 0.9) +
+    geom_errorbar(aes(ymin = .data[[col_lo]], ymax = .data[[col_hi]]),
+                  width = 0.3, linewidth = 0.3) +
+    scale_color_brewer(palette = "Set1", name = "Cluster") +
+    facet_wrap(~ Tipo, ncol = 2) +
+    theme_bw(base_size = 10) +
+    labs(title = paste("Posterior de ε_i —", esp$label),
+         x = "Região", y = expression(epsilon[i]))
+  print(p)
+  cat("\n\n")
+}
+```
+
+## $\varepsilon_{i,t}$ Temporal (M4--M7)
+
+```{r epsilon-temporal, results='asis'}
+for (esp in especificacoes) {
+  if (!esp$tag %in% TAGS_GAMMA_T) next
+  cat("\n\n### Especificação:", esp$label, "---", esp$nome_completo, "\n\n")
+
+  fig_comparativo_ou_individual(
+    dir_base     = esp$dir,
+    nome_comp    = "epsilon_comparativo.png",
+    nome_ind     = "painel_epsilon.png",
+    titulo_comp  = paste0("εᵢ,ₜ: Espacial vs. Não-espacial (", esp$label, ")"),
+    titulo_ind_fn = function(m) paste0("εᵢ,ₜ — ", esp$label, " | ", label_modelo(m)),
+    width_comp   = "\\linewidth"
+  )
+}
+```
+
+---
+
+# Trajetórias Estimadas de $\mu_{i,t}$
+
+Trajetórias da média posterior de $\mu_{i,t}$ com intervalo HPD 95% para as regiões selecionadas, comparando modelos espacial e não-espacial.
+
+```{r plots-mu, results='asis'}
+for (esp in especificacoes) {
+  img <- normalizePath(
+    file.path(root_dir, esp$dir, "mu_comparativo.png"),
+    winslash = "/", mustWork = FALSE)
+  if (!file.exists(img)) next
+
+  cat("\\clearpage\n\n")
+  cat("## Especificação:", esp$label, "\n\n")
+  cat("\\begin{figure}[H]\n\\centering\n")
+  cat("\\caption*{\\textbf{μᵢ,ₜ: Espacial vs. Não-espacial (", esp$label, ")}}\n", sep = "")
+  cat("\\includegraphics[width=\\linewidth,",
+      " height=0.75\\textheight, keepaspectratio]{",
+      img, "}\n", sep = "")
+  cat("\\end{figure}\n\n")
+}
+```
+
+---
+
+# Efeito Espacial $s_i$ (modelos espaciais)
+
+Desvios espaciais residuais capturados pelo componente ICAR. Presente em todos os modelos na variante "espacial".
+
+```{r s-posterior, results='asis'}
+for (esp in especificacoes) {
+  img <- normalizePath(
+    file.path(root_dir, esp$dir, "spatial", "s_posterior.png"),
+    winslash = "/", mustWork = FALSE)
+  if (file.exists(img)) {
+    cat("\n\n## Especificação:", esp$label, "\n\n")
+    fig_top(img,
+      paste0("Efeito espacial sᵢ: média posterior e HPD 95% (", esp$label, ")"))
+  }
+}
+```
+
+---
+
+# Diagnósticos MCMC
+
+## Sumário de ACF ($\boldsymbol{\beta}$ e $\tau_s$)
+
+```{r tab-acf, results='asis'}
+tabela_acf <- map_dfr(seq_len(nrow(resultados)), function(i) {
+  dados <- safe_read(file.path(resultados$pasta[i], "acf_diagnostics.csv"))
+  if (is.null(dados)) return(NULL)
+  # Exclui parâmetros temporais (muitos valores)
+  dados |>
+    filter(!str_detect(parameter, "^beta0t\\[|^lambda\\[|^gamma\\[")) |>
+    mutate(Modelo = resultados$spec_label[i],
+           Tipo = label_modelo(resultados$modelo[i])) |>
+    select(parameter, Modelo, Tipo,
+           any_of(c("ess", "rhat", "lag_0_10", "lag_0_05", "acf_lag1")))
+})
+
+if (nrow(tabela_acf) > 0) {
+  tbl <- tabela_acf |>
+    mutate(parameter = greek_param(parameter)) |>
+    arrange(parameter, Modelo, Tipo) |>
+    rename(`Parâmetro` = parameter,
+           `$n_{ef}$` = ess, `$\\hat{R}$` = rhat,
+           `$l_{0.10}$` = lag_0_10, `$l_{0.05}$` = lag_0_05,
+           `$\\rho_1$` = acf_lag1) |>
+    fmt_tbl_long("Diagnóstico de autocorrelação (parâmetros estruturais).")
+  tbl
+} else {
+  cat("\\textit{Nenhum arquivo acf\\_diagnostics.csv encontrado.}\n")
+}
+```
+
+## Traceplots
+
+Mostram a evolução das cadeias ao longo das iterações (pós burn-in). Linhas finas = amostra bruta; linhas espessas = média ergódica.
+
+```{r traceplots, results='asis'}
+traceplot_fname <- function(tag)
+  if (tag %in% TAGS_BETA_ACF) "traceplots_beta.png" else "traceplots.png"
+
+for (esp in especificacoes) {
+  cat("\n\n### Especificação:", esp$label, "\n\n")
+  fname <- traceplot_fname(esp$tag)
+  imgs <- character(0); labels <- character(0)
+  for (m in MODEL_TYPES) {
+    img <- normalizePath(file.path(root_dir, esp$dir, m, fname),
+                         winslash = "/", mustWork = FALSE)
+    if (file.exists(img)) {
+      imgs <- c(imgs, img); labels <- c(labels, label_modelo(m))
+    }
+  }
+  if (length(imgs) == 0) { next }
+
+  if (length(imgs) >= 1) {
+    fig_top(imgs[1], paste0("Traceplots de β (e τₛ se espacial) — ", esp$label, " | ", labels[1]))
+  }
+  if (length(imgs) >= 2) {
+    fig_top(imgs[2], paste0("Traceplots de β (e τₛ se espacial) — ", esp$label, " | ", labels[2]))
+  }
+}
+```
+
+## ACF de $\boldsymbol{\beta}$
+
+```{r acf-beta, results='asis'}
+acf_fname <- function(tag)
+  if (tag %in% TAGS_BETA_ACF) "acf_beta.png" else "acf_params.png"
+
+for (esp in especificacoes) {
+  cat("\n\n### Especificação:", esp$label, "\n\n")
+  fname <- acf_fname(esp$tag)
+  for (m in MODEL_TYPES) {
+    img <- normalizePath(file.path(root_dir, esp$dir, m, fname),
+                         winslash = "/", mustWork = FALSE)
+    if (file.exists(img)) {
+      fig_top(img, paste0("ACF de β — ", esp$label, " | ", label_modelo(m)))
+    }
+  }
+}
+```
+
+---
+
+# Conclusões
+
+## Resumo das Especificações
+
+As sete especificações permitem explorar diferentes hipóteses sobre a estrutura temporal e espacial do risco:
+
+- **M1 (Intercepto Fixo):** baseline simples, sem variação temporal
+- **M2 (Intercepto Temporal):** tendência basal dinâmica e flexível
+- **M3 (Lambda Compartilhado):** processo latente regional capturando heterogeneidade
+- **M4 (Gamma Temporal, K=4):** evolução dos pesos de cluster, efeito latente compartilhado
+- **M5 (Intercepto + Gamma, K=4):** separação entre tendência basal e variação de cluster
+- **M6 (Gamma Temporal, K=8):** até 8 clusters com priori informativa tempo-variante
+- **M7 (Intercepto + Gamma, K=8):** intercepto i.i.d. + clusters dinâmicos, padrão máximo
+
+## Critérios de Seleção
+
+A escolha entre modelos segue:
+
+1. **WAIC/LPML:** melhor ajuste preditivo com penalidade de complexidade
+2. **$\hat{R}$ e $n_{ef}$:** convergência MCMC (target: $\hat{R} < 1.05$, $n_{ef} > 400$)
+3. **Interpretabilidade:** separação clara entre componentes (basal, latente, cluster)
+
+## Inferência Posterior
+
+Parâmetros estruturais ($\boldsymbol{\beta}$, $\boldsymbol{\gamma}$, $\tau_s$) apresentam:
+- Estimativas centrais (médias posteriores) interpretáveis em escala log-relativa
+- Intervalos HPD 95% quantificando incerteza Bayesiana
+- Diagnósticos MCMC confirmando adequação amostral
+
+## Recomendações
+
+- Priorizar modelos com $\hat{R} < 1.05$ em todos os parâmetros
+- Comparar M4 vs. M5 para decidir entre lambda compartilhado com/sem intercepto dinâmico
+- M6--M7 com K=8 clusters são apropriados se houver evidência epidemiológica de mais de 4 subgrupos
+- Componente espacial ($s_i$) é importante se $\tau_s$ for significativamente maior que zero
+
+---
+
+# Apêndice Técnico
+
+## Estrutura Hierárquica Completa
+
+**Nível 1 (Verossimilhança):**
+$$Y_{i,t} \mid \mu_{i,t} \sim \text{Poisson}(\mu_{i,t})$$
+
+**Nível 2 (Preditor Log-Linear):**
+$$\log(\mu_{i,t}) = [\text{Componente Temporal}] + \log(E_{i,t}) + \log(\varepsilon_{i(t)}) + \mathbf{x}_{i,t}^\top \boldsymbol{\beta} + [s_i]$$
+
+onde $\varepsilon_{i(t)} = 1 - \sum_k h_{ik} \gamma_{k(t)}$ e as componentes variam conforme especificação.
+
+**Nível 3 (Prioris):**
+
+- $\beta_j \sim \mathrm{N}(0,1)$ para todas as especificações
+- $\gamma_{k,t}$ — ver especificação individual
+- $s_i \sim \mathrm{ICAR}(\tau_s)$ (modelos espaciais) com $\sigma_s \sim \text{Half-t}(0,1,1)$
+- $\lambda_t \sim \mathrm{Ga}(a_t, b_t)$ (modelos com FFBS)
+- $\beta_{0t} \sim \mathrm{N}(0,1)$ i.i.d. (modelos com intercepto temporal)
+
+## Estimação MCMC
+
+- **Algoritmo:** Gibbs com passos Metropolis-Hastings adaptativos (NIMBLE)
+- **Iterações:** 50.000 (10.000 burn-in, thin=10 → 4.000 amostras pós-burn-in)
+- **Cadeias:** 2 independentes com inicializações dispersas
+- **Paralelização:** processamento em núcleos separados por modelo
+
+## Computação Diagnosticada
+
+- **ESS (Effective Sample Size):** $n_{ef} = n \cdot \frac{1}{1 + 2\sum_{\ell=1}^\infty \rho_\ell}$
+- **$\hat{R}$ de Gelman--Rubin:** convergência diagonal; target < 1.05
+- **ACF (Autocorrelação):** lags para correlação < 0.05 e < 0.10
+
+---
+
+*Relatório compilado em* `r Sys.Date()` *por R Markdown.*
