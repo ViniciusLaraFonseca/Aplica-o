@@ -387,8 +387,7 @@ run_model <- function(model_type, output_dir) {
     width = 10, height = 7
   )
   
-  # ── 5j. Sumário de epsilon[i, t] para regiões selecionadas ───────────────────
-  eps_ri <- sort(REGIONS_INTEREST)
+  # ── 5j. Sumário de epsilon[i, t] por região e por cluster ────────────────────
   
   # Sumário completo (N × T) — salvo em CSV
   eps_full <- do.call(rbind, lapply(seq_len(N_regions), function(i) {
@@ -400,32 +399,32 @@ run_model <- function(model_type, output_dir) {
   }))
   write_csv(eps_full, file.path(scenario_dir, "epsilon_summary.csv"))
   
-  # Sumário das regiões selecionadas — usado no painel
-  eps_sel <- eps_full %>% filter(Region %in% eps_ri)
+  # Agrega por cluster × tempo (pool de draws das regiões do cluster)
+  eps_by_cluster <- do.call(rbind, lapply(seq_len(K), function(k) {
+    regs_k <- which(cluster_ids == k)
+    do.call(rbind, lapply(seq_len(n_times), function(t) {
+      sv  <- as.vector(epsilon_draws[, regs_k, t])
+      hpd <- safe_hpd(sv)
+      tibble(k = k, Time = t, Mean = mean(sv), Lower = hpd[1], Upper = hpd[2])
+    }))
+  }))
+  write_csv(eps_by_cluster, file.path(scenario_dir, "epsilon_cluster_summary.csv"))
   
-  # Rótulos "Reg i (Ck)" para os facets
-  eps_labels <- setNames(
-    sprintf("Reg %d (C%d)", eps_ri, cluster_ids[eps_ri]),
-    as.character(eps_ri)
-  )
-  
-  # Painel temporal de epsilon[i, t]: facet por região selecionada, eixo x = Tempo
-  # (mesmo estilo de painel_mu / painel_theta)
+  # Painel temporal de epsilon agregado por cluster k
   ggsave(
     file.path(scenario_dir, "painel_epsilon.png"),
-    ggplot(eps_sel, aes(x = Time)) +
+    ggplot(eps_by_cluster, aes(x = Time)) +
       geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "darkorange", alpha = 0.3) +
       geom_line(aes(y = Mean), color = "darkorange", linewidth = 0.8) +
       facet_wrap(
-        ~ Region, ncol = 3, scales = "free_y",
-        labeller = labeller(Region = eps_labels)
+        ~ k, ncol = 2, scales = "free_y",
+        labeller = labeller(k = function(x) paste0("epsilon[", x, ", t]"))
       ) +
-      theme_bw(base_size = 10) +
-      labs(title = paste("Epsilon[i, t] estimado (", model_type, ")"),
-           x = "Tempo", y = expression(epsilon[it])),
-    width = 12, height = 10
+      theme_bw(base_size = 11) +
+      labs(title = paste("Trajetoria de epsilon por cluster (", model_type, ") — K=4"),
+           x = "Tempo", y = expression(epsilon[kt])),
+    width = 10, height = 7
   )
-  
   # ── 5k. Sumário de beta ───────────────────────────────────────────────────────
   beta_summary <- do.call(rbind, lapply(beta_names, function(nm) {
     sv  <- samples_mat[, nm]; hpd <- safe_hpd(sv)
@@ -774,17 +773,33 @@ gamma_all <- lapply(model_types, function(m) {
 }) |> bind_rows()
 
 if (nrow(gamma_all) > 0) {
+  # Cria uma banda estática [0.0, 0.1] para a priori de gamma[1,t] no M4
+  prior_ribbon <- tibble(
+    Time    = seq_len(n_times),
+    k       = 1L,
+    a_lower = constants_spatial$a_unif, # 0.0
+    b_upper = constants_spatial$b_unif  # 0.1
+  )
+  
   ggsave(
     file.path(output_dir, "gamma_comparativo.png"),
     ggplot(gamma_all, aes(x = Time, y = Mean, color = model, fill = model)) +
       geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.12, color = NA) +
       geom_line(linewidth = 0.8) +
+      # Banda da priori apenas para k=1 (âncora)
+      geom_ribbon(
+        data = prior_ribbon,
+        aes(x = Time, ymin = a_lower, ymax = b_upper),
+        inherit.aes = FALSE,
+        fill = "grey40", alpha = 0.10, linetype = "dotted", color = "grey40"
+      ) +
       facet_wrap(
         ~ k, ncol = 2, scales = "free_y",
         labeller = labeller(k = function(x) paste0("gamma[", x, ", t]"))
       ) +
       theme_bw(base_size = 12) + theme(legend.position = "bottom") +
-      labs(title = "Comparacao gamma[k,t]: espacial vs. nao-espacial",
+      labs(title = "Comparacao gamma[k,t]: espacial vs. nao-espacial (K=4)",
+           subtitle = "Banda cinza em k=1: suporte da priori estatica [0, 0.1]",
            x = "Tempo", y = expression(gamma[kt]),
            color = "Modelo", fill = "Modelo"),
     width = 10, height = 8, dpi = 300
@@ -813,5 +828,31 @@ for (tipo in c("theta", "mu")) {
   }
 }
 
+# Comparativo epsilon por cluster
+eps_cluster_all <- lapply(model_types, function(m) {
+  path <- file.path(output_dir, m, "epsilon_cluster_summary.csv")
+  if (!file.exists(path)) return(NULL)
+  read_csv(path, show_col_types = FALSE) %>% mutate(model = m)
+}) |> bind_rows()
+
+if (nrow(eps_cluster_all) > 0) {
+  ggsave(
+    file.path(output_dir, "epsilon_comparativo.png"),
+    ggplot(eps_cluster_all,
+           aes(x = Time, y = Mean, color = model, fill = model)) +
+      geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.12, color = NA) +
+      geom_line(linewidth = 0.8) +
+      facet_wrap(
+        ~ k, ncol = 2, scales = "free_y",
+        labeller = labeller(k = function(x) paste0("epsilon[", x, ", t]"))
+      ) +
+      theme_bw(base_size = 12) + theme(legend.position = "bottom") +
+      labs(title = "Comparacao epsilon por cluster: espacial vs. nao-espacial (K=4)",
+           subtitle = "Banda = IC 95% HPD",
+           x = "Tempo", y = expression(epsilon[kt]),
+           color = "Modelo", fill = "Modelo"),
+    width = 10, height = 8, dpi = 300
+  )
+}
 cat("\nTempo total de execucao:\n")
 print(Sys.time() - inicio_global)

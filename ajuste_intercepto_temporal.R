@@ -262,27 +262,26 @@ run_model <- function(model_type, output_dir) {
   write_csv(gamma_summary,  file.path(scenario_dir, "gamma_summary.csv"))
 
   # ── Trajetória de beta0t (gráfico central deste modelo) ────────────────────
-  # Recupera os anos reais do colnames de Y_mat (passado via data_nimble$Y)
   anos_label <- colnames(data_nimble$Y)
   if (is.null(anos_label)) anos_label <- seq_len(n_times)
-
+  
   beta0t_plot <- beta0t_summary %>%
     mutate(Tempo = seq_along(beta0t_names),
            Ano   = anos_label)
-
-  ggsave(file.path(scenario_dir, "beta0t_trajetoria.png"),
-    ggplot(beta0t_plot, aes(x = Ano, y = Mean, group = 1)) +
-      geom_ribbon(aes(ymin = HPD_Lower, ymax = HPD_Upper),
-                  fill = "steelblue", alpha = 0.25) +
-      geom_line(color = "steelblue", linewidth = 0.9) +
-      geom_point(color = "steelblue", size = 1.5) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
-      theme_bw(base_size = 12) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-      labs(title = paste("Trajetoria do intercepto temporal beta0t —", model_type),
-           subtitle = "Media posterior e HPD 95%",
-           x = "Ano", y = expression(beta[0][t])),
-    width = 10, height = 5)
+  
+  ggsave(file.path(scenario_dir, "painel_beta0t.png"),
+         ggplot(beta0t_plot, aes(x = Tempo)) +
+           geom_ribbon(aes(ymin = HPD_Lower, ymax = HPD_Upper),
+                       fill = "grey60", alpha = 0.4) +
+           geom_line(aes(y = Mean), color = "black", linewidth = 0.9) +
+           geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+           scale_x_continuous(breaks = seq_len(n_times), labels = anos_label) +
+           theme_bw(base_size = 12) +
+           theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+           labs(title = paste("Intercepto temporal beta0t (", model_type, ")"),
+                subtitle = "Média posterior e HPD 95%",
+                x = "Ano", y = expression(beta[0][t])),
+         width = 10, height = 5)
 
   # ── tau_s e s (espacial) ───────────────────────────────────────────────────
   ESS_tau <- NA_real_
@@ -355,13 +354,12 @@ run_model <- function(model_type, output_dir) {
     cat(sprintf("[%s] WAIC = %.2f | LPML = %.2f\n", model_type, waic, LPML))
   }
 
-  # ── Diagnósticos ──────────────────────────────────────────────────────────
-  # Para ACF/traceplot: beta0t resumidos como grupo + beta + gamma (+ tau_s)
-  # Monitora todos os beta0t individualmente mas plota apenas alguns
-  params_struct    <- c(beta_names, gamma_names)
-  if (is_spatial)  params_struct <- c(params_struct, "tau_s")
-
-  # beta0t: diagnóstico completo salvo em arquivo; traceplot de amostra de 4
+  # ── Diagnósticos (Padrão Unificado) ───────────────────────────────────────
+  params_beta   <- c(beta_names, if (is_spatial) "tau_s" else character(0))
+  params_gamma  <- gamma_names
+  params_struct <- c(params_beta, params_gamma)
+  
+  # 1. Numérico: beta0t salvo com o resto da estrutura
   ESS_b0t  <- effectiveSize(mcmc_list_full[, beta0t_names])
   Rhat_b0t <- safe_gelman(mcmc_list_full[, beta0t_names])
   acf_b0t  <- do.call(rbind, lapply(beta0t_names, function(nm) {
@@ -372,10 +370,9 @@ run_model <- function(model_type, output_dir) {
            lag_0.05 = { v <- lags[which(abs(acfs) < 0.05)[1]]; ifelse(is.na(v), Inf, v) },
            acf_lag1 = acfs[1])
   }))
-
+  
   ESS_struct  <- effectiveSize(mcmc_list_full[, params_struct])
   Rhat_struct <- safe_gelman(mcmc_list_full[, params_struct])
-
   acf_struct <- do.call(rbind, lapply(params_struct, function(nm) {
     ac   <- acf(samples_mat[, nm], lag.max = 200, plot = FALSE)
     lags <- as.vector(ac$lag[-1]); acfs <- as.vector(ac$acf[-1])
@@ -384,55 +381,88 @@ run_model <- function(model_type, output_dir) {
            lag_0.05 = { v <- lags[which(abs(acfs) < 0.05)[1]]; ifelse(is.na(v), Inf, v) },
            acf_lag1 = acfs[1])
   }))
-
+  
   write_csv(bind_rows(acf_b0t, acf_struct),
             file.path(scenario_dir, "acf_diagnostics.csv"))
-
-  # ACF plot: beta, gamma, tau_s (+ 4 beta0t espaçados)
-  idx_b0t_plot <- round(seq(1, n_times, length.out = min(4, n_times)))
-  params_acf_plot <- c(beta0t_names[idx_b0t_plot], params_struct)
-
-  acf_df <- do.call(rbind, lapply(params_acf_plot, function(nm) {
+  
+  # 2. Gráficos ACF
+  acf_beta_df <- do.call(rbind, lapply(params_beta, function(nm) {
     ac <- acf(samples_mat[, nm], lag.max = 100, plot = FALSE)
-    tibble(Parameter = nm, Lag = as.vector(ac$lag[-1]),
-           ACF = as.vector(ac$acf[-1]))
+    tibble(Parameter = nm, Lag = as.vector(ac$lag[-1]), ACF = as.vector(ac$acf[-1]))
   }))
-  ggsave(file.path(scenario_dir, "acf_params.png"),
-    ggplot(acf_df, aes(x = Lag, y = ACF)) +
-      geom_col(width = 0.6, fill = "grey50") +
-      geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed",
-                 color = "blue", linewidth = 0.5) +
-      geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted",
-                 color = "red", linewidth = 0.5) +
-      facet_wrap(~Parameter, scales = "free_y") +
-      theme_bw(base_size = 10) +
-      labs(title = paste("ACF (", model_type, ")"),
-           subtitle = "4 beta0t selecionados + beta + gamma + tau_s"),
-    width = 12, height = 8)
-
-  # Traceplots: beta, gamma, tau_s + 4 beta0t
-  params_trace <- c(beta0t_names[idx_b0t_plot], params_struct)
+  ggsave(file.path(scenario_dir, "acf_beta.png"),
+         ggplot(acf_beta_df, aes(x = Lag, y = ACF)) +
+           geom_col(width = 0.6, fill = "grey50") +
+           geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed", color = "blue", linewidth = 0.5) +
+           geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted", color = "red", linewidth = 0.5) +
+           facet_wrap(~Parameter, scales = "free_y") + theme_bw(base_size = 11) +
+           labs(title = paste("ACF de beta (", model_type, ")"), subtitle = "Azul: |0.10| | Vermelho: |0.05|"),
+         width = 10, height = 5)
+  
+  acf_gamma_df <- do.call(rbind, lapply(params_gamma, function(nm) {
+    ac <- acf(samples_mat[, nm], lag.max = 100, plot = FALSE)
+    tibble(Parameter = nm, Lag = as.vector(ac$lag[-1]), ACF = as.vector(ac$acf[-1]))
+  }))
+  ggsave(file.path(scenario_dir, "acf_gamma.png"),
+         ggplot(acf_gamma_df, aes(x = Lag, y = ACF)) +
+           geom_col(width = 0.6, fill = "darkorange") +
+           geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed", color = "blue", linewidth = 0.5) +
+           geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted", color = "red", linewidth = 0.5) +
+           facet_wrap(~Parameter, scales = "free_y") + theme_bw(base_size = 11) +
+           labs(title = paste("ACF de gamma (", model_type, ")"), subtitle = "Azul: |0.10| | Vermelho: |0.05|"),
+         width = 10, height = 5)
+  
+  acf_b0t_df_plot <- do.call(rbind, lapply(beta0t_names, function(nm) {
+    ac <- acf(samples_mat[, nm], lag.max = 100, plot = FALSE)
+    t_idx <- as.integer(str_extract(nm, "\\d+"))
+    tibble(Time = t_idx, Lag = as.vector(ac$lag[-1]), ACF = as.vector(ac$acf[-1]))
+  }))
+  ggsave(file.path(scenario_dir, "acf_beta0t.png"),
+         ggplot(acf_b0t_df_plot, aes(x = Lag, y = ACF)) +
+           geom_col(width = 0.6, fill = "steelblue") +
+           geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed", color = "blue", linewidth = 0.5) +
+           geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted", color = "red", linewidth = 0.5) +
+           facet_wrap(~Time, scales = "free_y", ncol = 6, labeller = label_bquote(beta[0*.(Time)])) +
+           theme_bw(base_size = 9) +
+           labs(title = paste("ACF de beta0t (", model_type, ")"), subtitle = "Azul: |0.10| | Vermelho: |0.05|"),
+         width = 14, height = 10)
+  
+  # 3. Traceplots (Apenas Beta e Gamma para manter limpo, igual ao M7)
   cores_cadeia <- c("Cadeia 1" = "#2166AC", "Cadeia 2" = "#D6604D")
-
-  df_trace <- do.call(rbind, lapply(1:nchains, function(ch) {
+  
+  df_trace_beta <- do.call(rbind, lapply(1:nchains, function(ch) {
     cm <- as.matrix(mcmc_list_full[[ch]])
-    do.call(rbind, lapply(params_trace, function(nm) {
+    do.call(rbind, lapply(params_beta, function(nm) {
       vals <- cm[, nm]
-      tibble(Iter = seq_along(vals), Value = vals,
-             ErgMedia = cumsum(vals) / seq_along(vals),
+      tibble(Iter = seq_along(vals), Value = vals, ErgMedia = cumsum(vals) / seq_along(vals),
              Parameter = nm, Cadeia = paste0("Cadeia ", ch))
     }))
   }))
-  ggsave(file.path(scenario_dir, "traceplots.png"),
-    ggplot(df_trace, aes(x = Iter, color = Cadeia)) +
-      geom_line(aes(y = Value),    alpha = 0.25, linewidth = 0.20) +
-      geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
-      scale_color_manual(values = cores_cadeia) +
-      facet_wrap(~Parameter, scales = "free_y") +
-      theme_bw(base_size = 11) + theme(legend.position = "bottom") +
-      labs(title = paste("Traceplots + Media Ergodica (", model_type, ")"),
-           x = "Iteracao", y = "Valor"),
-    width = 10, height = max(6, 3 * ceiling(length(params_trace) / 3)))
+  ggsave(file.path(scenario_dir, "traceplots_beta.png"),
+         ggplot(df_trace_beta, aes(x = Iter, color = Cadeia)) +
+           geom_line(aes(y = Value), alpha = 0.25, linewidth = 0.20) +
+           geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
+           scale_color_manual(values = cores_cadeia) + facet_wrap(~Parameter, scales = "free_y") +
+           theme_bw(base_size = 11) + theme(legend.position = "bottom") +
+           labs(title = paste("Traceplots beta (", model_type, ")"), x = "Iteracao (pos-burnin)", y = "Valor"),
+         width = 10, height = max(5, 3 * ceiling(length(params_beta) / 3)))
+  
+  df_trace_gamma <- do.call(rbind, lapply(1:nchains, function(ch) {
+    cm <- as.matrix(mcmc_list_full[[ch]])
+    do.call(rbind, lapply(params_gamma, function(nm) {
+      vals <- cm[, nm]
+      tibble(Iter = seq_along(vals), Value = vals, ErgMedia = cumsum(vals) / seq_along(vals),
+             Parameter = nm, Cadeia = paste0("Cadeia ", ch))
+    }))
+  }))
+  ggsave(file.path(scenario_dir, "traceplots_gamma.png"),
+         ggplot(df_trace_gamma, aes(x = Iter, color = Cadeia)) +
+           geom_line(aes(y = Value), alpha = 0.25, linewidth = 0.20) +
+           geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
+           scale_color_manual(values = cores_cadeia) + facet_wrap(~Parameter, scales = "free_y") +
+           theme_bw(base_size = 11) + theme(legend.position = "bottom") +
+           labs(title = paste("Traceplots gamma (", model_type, ")"), x = "Iteracao (pos-burnin)", y = "Valor"),
+         width = 10, height = max(5, 3 * ceiling(length(params_gamma) / 3)))
 
   # ── Retorno ────────────────────────────────────────────────────────────────
   tibble(
@@ -518,26 +548,24 @@ all_b0t <- lapply(model_types, function(m) {
 
 if (nrow(all_b0t) > 0) {
   anos_label <- colnames(data_nimble$Y)
-  if (!is.null(anos_label))
+  if (!is.null(anos_label)) {
     all_b0t <- all_b0t %>% mutate(Ano = rep(anos_label, length(model_types)))
-
+  }
+  
   ggsave(file.path(output_dir, "beta0t_comparativo.png"),
-    ggplot(all_b0t, aes(x = Tempo, y = Mean, color = model, fill = model)) +
-      geom_ribbon(aes(ymin = HPD_Lower, ymax = HPD_Upper),
-                  alpha = 0.15, color = NA) +
-      geom_line(linewidth = 0.9) +
-      geom_point(size = 1.5) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
-      scale_x_continuous(breaks = seq_len(length(anos_label)),
-                         labels = anos_label) +
-      theme_bw(base_size = 12) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1),
-            legend.position = "bottom") +
-      labs(title = "Trajetoria de beta0t: espacial vs. nao-espacial",
-           subtitle = "Media posterior e HPD 95%",
-           x = "Ano", y = expression(beta[0][t]),
-           color = "Modelo", fill = "Modelo"),
-    width = 12, height = 5, dpi = 300)
+         ggplot(all_b0t, aes(x = Tempo, y = Mean, color = model, fill = model)) +
+           geom_ribbon(aes(ymin = HPD_Lower, ymax = HPD_Upper), alpha = 0.15, color = NA) +
+           geom_line(linewidth = 0.9) +
+           geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+           scale_x_continuous(breaks = seq_len(length(anos_label)), labels = anos_label) +
+           theme_bw(base_size = 12) +
+           theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                 legend.position = "bottom") +
+           labs(title = "Comparacao de beta0t: espacial vs. nao-espacial",
+                subtitle = "Media posterior e HPD 95%",
+                x = "Ano", y = expression(beta[0][t]),
+                color = "Modelo", fill = "Modelo"),
+         width = 10, height = 5, dpi = 300)
 }
 
 cat("\nTempo total:\n"); print(Sys.time() - inicio_global)

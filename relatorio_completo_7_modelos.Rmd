@@ -8,7 +8,7 @@ output:
     toc: true
     toc_depth: 3
     number_sections: true
-    latex_engine: pdflatex
+    latex_engine: xelatex
     keep_tex: false
     extra_dependencies: ["float", "graphicx", "booktabs", "longtable",
                          "caption", "subcaption", "array", "amsmath", "amssymb"]

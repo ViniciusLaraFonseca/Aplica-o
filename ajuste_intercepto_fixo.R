@@ -330,13 +330,14 @@ run_model <- function(model_type, output_dir) {
     cat(sprintf("[%s] WAIC = %.2f | LPML = %.2f\n", model_type, waic, LPML))
   }
 
-  # ── Diagnósticos ──────────────────────────────────────────────────────────
-  params_struct <- c("beta0", beta_names, gamma_names)
-  if (is_spatial) params_struct <- c(params_struct, "tau_s")
-
+  # ── Diagnósticos (Padrão Unificado) ───────────────────────────────────────
+  params_beta   <- c("beta0", beta_names, if (is_spatial) "tau_s" else character(0))
+  params_gamma  <- gamma_names
+  params_struct <- c(params_beta, params_gamma)
+  
   ESS_struct  <- effectiveSize(mcmc_list_full[, params_struct])
   Rhat_struct <- safe_gelman(mcmc_list_full[, params_struct])
-
+  
   acf_results <- do.call(rbind, lapply(params_struct, function(nm) {
     ac   <- acf(samples_mat[, nm], lag.max = 200, plot = FALSE)
     lags <- as.vector(ac$lag[-1]); acfs <- as.vector(ac$acf[-1])
@@ -346,45 +347,88 @@ run_model <- function(model_type, output_dir) {
            acf_lag1 = acfs[1])
   }))
   write_csv(acf_results, file.path(scenario_dir, "acf_diagnostics.csv"))
-
-  acf_df <- do.call(rbind, lapply(params_struct, function(nm) {
+  
+  # 1. ACF de Beta e Tau_s
+  acf_beta_df <- do.call(rbind, lapply(params_beta, function(nm) {
     ac <- acf(samples_mat[, nm], lag.max = 100, plot = FALSE)
     tibble(Parameter = nm, Lag = as.vector(ac$lag[-1]), ACF = as.vector(ac$acf[-1]))
   }))
-  ggsave(file.path(scenario_dir, "acf_params.png"),
-    ggplot(acf_df, aes(x = Lag, y = ACF)) +
-      geom_col(width = 0.6, fill = "grey50") +
-      geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed",
-                 color = "blue", linewidth = 0.5) +
-      geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted",
-                 color = "red", linewidth = 0.5) +
-      facet_wrap(~Parameter, scales = "free_y") +
-      theme_bw(base_size = 11) +
-      labs(title = paste("ACF (", model_type, ")"),
-           subtitle = "Azul: |0.10| | Vermelho: |0.05|"),
-    width = 10, height = 6)
-
+  ggsave(file.path(scenario_dir, "acf_beta.png"),
+         ggplot(acf_beta_df, aes(x = Lag, y = ACF)) +
+           geom_col(width = 0.6, fill = "grey50") +
+           geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed",
+                      color = "blue", linewidth = 0.5) +
+           geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted",
+                      color = "red", linewidth = 0.5) +
+           facet_wrap(~Parameter, scales = "free_y") +
+           theme_bw(base_size = 11) +
+           labs(title = paste("ACF de beta e tau_s (", model_type, ")"),
+                subtitle = "Azul: |0.10| | Vermelho: |0.05|"),
+         width = 10, height = 5)
+  
+  # 2. ACF de Gamma
+  acf_gamma_df <- do.call(rbind, lapply(params_gamma, function(nm) {
+    ac <- acf(samples_mat[, nm], lag.max = 100, plot = FALSE)
+    tibble(Parameter = nm, Lag = as.vector(ac$lag[-1]), ACF = as.vector(ac$acf[-1]))
+  }))
+  ggsave(file.path(scenario_dir, "acf_gamma.png"),
+         ggplot(acf_gamma_df, aes(x = Lag, y = ACF)) +
+           geom_col(width = 0.6, fill = "darkorange") +
+           geom_hline(yintercept = c(-0.10, 0.10), linetype = "dashed",
+                      color = "blue", linewidth = 0.5) +
+           geom_hline(yintercept = c(-0.05, 0.05), linetype = "dotted",
+                      color = "red", linewidth = 0.5) +
+           facet_wrap(~Parameter, scales = "free_y") +
+           theme_bw(base_size = 11) +
+           labs(title = paste("ACF de gamma (", model_type, ")"),
+                subtitle = "Azul: |0.10| | Vermelho: |0.05|"),
+         width = 10, height = 5)
+  
   cores_cadeia <- c("Cadeia 1" = "#2166AC", "Cadeia 2" = "#D6604D")
-  df_trace <- do.call(rbind, lapply(1:nchains, function(ch) {
+  
+  # 3. Traceplots Beta e Tau_s
+  df_trace_beta <- do.call(rbind, lapply(1:nchains, function(ch) {
     cm <- as.matrix(mcmc_list_full[[ch]])
-    do.call(rbind, lapply(params_struct, function(nm) {
+    do.call(rbind, lapply(params_beta, function(nm) {
       vals <- cm[, nm]
       tibble(Iter = seq_along(vals), Value = vals,
              ErgMedia = cumsum(vals) / seq_along(vals),
              Parameter = nm, Cadeia = paste0("Cadeia ", ch))
     }))
   }))
-  ggsave(file.path(scenario_dir, "traceplots.png"),
-    ggplot(df_trace, aes(x = Iter, color = Cadeia)) +
-      geom_line(aes(y = Value),    alpha = 0.25, linewidth = 0.20) +
-      geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
-      scale_color_manual(values = cores_cadeia) +
-      facet_wrap(~Parameter, scales = "free_y") +
-      theme_bw(base_size = 11) + theme(legend.position = "bottom") +
-      labs(title = paste("Traceplots + Media Ergodica (", model_type, ")"),
-           x = "Iteracao", y = "Valor"),
-    width = 10, height = max(6, 3 * ceiling(length(params_struct) / 3)))
-
+  ggsave(file.path(scenario_dir, "traceplots_beta.png"),
+         ggplot(df_trace_beta, aes(x = Iter, color = Cadeia)) +
+           geom_line(aes(y = Value),    alpha = 0.25, linewidth = 0.20) +
+           geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
+           scale_color_manual(values = cores_cadeia) +
+           facet_wrap(~Parameter, scales = "free_y") +
+           theme_bw(base_size = 11) + theme(legend.position = "bottom") +
+           labs(title = paste("Traceplots beta (", model_type, ")"),
+                subtitle = "Linha grossa = media ergodica | Linha fina = cadeia",
+                x = "Iteracao (pos-burnin)", y = "Valor"),
+         width = 10, height = max(5, 3 * ceiling(length(params_beta) / 3)))
+  
+  # 4. Traceplots Gamma
+  df_trace_gamma <- do.call(rbind, lapply(1:nchains, function(ch) {
+    cm <- as.matrix(mcmc_list_full[[ch]])
+    do.call(rbind, lapply(params_gamma, function(nm) {
+      vals <- cm[, nm]
+      tibble(Iter = seq_along(vals), Value = vals,
+             ErgMedia = cumsum(vals) / seq_along(vals),
+             Parameter = nm, Cadeia = paste0("Cadeia ", ch))
+    }))
+  }))
+  ggsave(file.path(scenario_dir, "traceplots_gamma.png"),
+         ggplot(df_trace_gamma, aes(x = Iter, color = Cadeia)) +
+           geom_line(aes(y = Value),    alpha = 0.25, linewidth = 0.20) +
+           geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
+           scale_color_manual(values = cores_cadeia) +
+           facet_wrap(~Parameter, scales = "free_y") +
+           theme_bw(base_size = 11) + theme(legend.position = "bottom") +
+           labs(title = paste("Traceplots gamma (", model_type, ")"),
+                subtitle = "Linha grossa = media ergodica | Linha fina = cadeia",
+                x = "Iteracao (pos-burnin)", y = "Valor"),
+         width = 10, height = max(5, 3 * ceiling(length(params_gamma) / 3)))
   # ── Retorno ────────────────────────────────────────────────────────────────
   tibble(
     model          = model_type,
