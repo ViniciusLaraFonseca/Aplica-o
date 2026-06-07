@@ -107,7 +107,7 @@ cat(sprintf(
 # ==============================================================================
 # 3. REGIÕES PARA MONITORAR
 # ==============================================================================
-cluster_ids <- apply(h_mat, 1, which.max)
+cluster_ids <- apply(h_mat, 1, sum)
 
 set.seed(42)
 REGIONS_INTEREST <- unlist(lapply(1:K, function(cl) {
@@ -813,6 +813,30 @@ run_model <- function(model_type, output_dir) {
     width = 10, height = 5
   )
   
+  # Traceplots de beta (e tau_s para o modelo espacial)
+  params_trace_beta <- c(beta_names, if (is_spatial) "tau_s" else character(0))
+  df_trace_beta <- do.call(rbind, lapply(1:nchains, function(ch) {
+    cm <- as.matrix(mcmc_list_full[[ch]])
+    do.call(rbind, lapply(params_trace_beta, function(nm) {
+      vals <- cm[, nm]
+      tibble(Iter = seq_along(vals), Value = vals,
+             ErgMedia = cumsum(vals) / seq_along(vals),
+             Parameter = nm, Cadeia = paste0("Cadeia ", ch))
+    }))
+  }))
+  ggsave(
+    file.path(scenario_dir, "traceplots_beta.png"),
+    ggplot(df_trace_beta, aes(x = Iter, color = Cadeia)) +
+      geom_line(aes(y = Value),    alpha = 0.25, linewidth = 0.20) +
+      geom_line(aes(y = ErgMedia), alpha = 0.90, linewidth = 0.75) +
+      scale_color_manual(values = cores_cadeia) +
+      facet_wrap(~ Parameter, scales = "free_y") +
+      theme_bw(base_size = 11) + theme(legend.position = "bottom") +
+      labs(title    = paste("Traceplots beta e tau_s (", model_type, ")"),
+           subtitle = "Linha grossa = média ergódica | Linha fina = cadeia",
+           x = "Iteração (pós-burnin)", y = "Valor"),
+    width = 10, height = max(5, 3 * ceiling(length(params_trace_beta) / 3))
+  )
   # Traceplots de lambda[t] (trajetória completa)
   df_trace_lambda <- do.call(rbind, lapply(1:nchains, function(ch) {
     cm <- as.matrix(mcmc_list_full[[ch]])

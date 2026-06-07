@@ -178,7 +178,7 @@ inits_spatial_1 <- list(
 )
 inits_spatial_2 <- list(
   lambda  = lambda_init * matrix(runif(N_regions * n_times, 0.8, 1.2), 
-                                  nrow = N_regions, ncol = n_times),
+                                 nrow = N_regions, ncol = n_times),
   beta    = rnorm(p, 0, 0.3),
   gamma_1 = gamma_1_init2, incr = incr_init2,
   sigma_s = 1.0, s = rep(0, N_regions)
@@ -190,7 +190,7 @@ inits_nonspatial_1 <- list(
 )
 inits_nonspatial_2 <- list(
   lambda  = lambda_init * matrix(runif(N_regions * n_times, 0.8, 1.2), 
-                                  nrow = N_regions, ncol = n_times),
+                                 nrow = N_regions, ncol = n_times),
   beta    = rnorm(p, 0, 0.3),
   gamma_1 = gamma_1_init2, incr = incr_init2
 )
@@ -301,15 +301,16 @@ run_model <- function(model_type, output_dir) {
   # ── 6b. FFBS espacial ──────────────────────────────────────────────────────
   #
   # Amostrador Gama-conjugado para {lambda[i,1],...,lambda[i,T]} para cada região i.
+  # O parâmetro 'i' é passado via control.
   #
   # Filtro forward (acumulação de estatísticas suficientes):
-  #   a[i,t+1] = w * a[i,t] + Y[i,t]          (contagem de uma região)
-  #   b[i,t+1] = w * b[i,t] + g[i,t]          (exposição ajustada da região)
+  #   a[t+1] = w * a[t] + Y[i,t]          (contagem de uma região)
+  #   b[t+1] = w * b[t] + g[i,t]          (exposição ajustada da região)
   #   g[i,t] = E[i,t] * epsilon[i,t] * exp(x'beta + s[i])
   #
   # Amostrador backward:
-  #   lambda[i,T] ~ Gamma(a[i,T+1], b[i,T+1])
-  #   nu        ~ Gamma((1-w)*a[i,t], b[i,t])
+  #   lambda[i,T] ~ Gamma(a[T+1], b[T+1])
+  #   nu        ~ Gamma((1-w)*a[t], b[t])
   #   lambda[i,t] = nu + w * lambda[i,t+1]     (garante lambda[i,t] > 0)
   # ---------------------------------------------------------------------------
   
@@ -318,6 +319,7 @@ run_model <- function(model_type, output_dir) {
     setup = function(model, mvSaved, target, control) {
       n_regions <- control$n_regions; n_times <- control$n_times
       p  <- control$p
+      i  <- control$i  # índice da região passa via control
       a0 <- control$a0; b0 <- control$b0; w <- control$w
       at_buf <- nimNumeric(n_times + 1, 0)
       bt_buf <- nimNumeric(n_times + 1, 0)
@@ -326,17 +328,10 @@ run_model <- function(model_type, output_dir) {
       setupOutputs(at_buf, bt_buf)
     },
     run = function() {
-      declare(i, integer()); declare(t, integer()); declare(t_idx, integer())
+      declare(t, integer()); declare(t_idx, integer())
       declare(t_back, integer()); declare(k, integer())
       declare(prod_val, double()); declare(g_it, double())
       declare(nu, double())
-      
-      # Extrair o índice i da posição de lambda no alvo
-      # target tem formato "lambda[i, 1:n_times]"
-      i <- model$expandNodeNames(target)[1]  # pega primeiro nó da trajetória
-      # Parse para extrair i de "lambda[i, 1]"
-      i_str <- strsplit(i, "\\[|,|\\]")[[1]][2]
-      i <- as.integer(i_str)
       
       at_buf[1] <<- a0; bt_buf[1] <<- b0
       
@@ -375,6 +370,7 @@ run_model <- function(model_type, output_dir) {
     setup = function(model, mvSaved, target, control) {
       n_regions <- control$n_regions; n_times <- control$n_times
       p  <- control$p
+      i  <- control$i
       a0 <- control$a0; b0 <- control$b0; w <- control$w
       at_buf <- nimNumeric(n_times + 1, 0)
       bt_buf <- nimNumeric(n_times + 1, 0)
@@ -383,13 +379,10 @@ run_model <- function(model_type, output_dir) {
       setupOutputs(at_buf, bt_buf)
     },
     run = function() {
-      declare(i, integer()); declare(t, integer()); declare(t_idx, integer())
+      declare(t, integer()); declare(t_idx, integer())
       declare(t_back, integer()); declare(k, integer())
       declare(prod_val, double()); declare(g_it, double())
       declare(nu, double())
-      
-      i_str <- strsplit(strsplit(target, "\\[")[[1]][2], ",")[[1]][1]
-      i <- as.integer(i_str)
       
       at_buf[1] <<- a0; bt_buf[1] <<- b0
       
@@ -444,7 +437,7 @@ run_model <- function(model_type, output_dir) {
       target  = paste0("lambda[", i, ", 1:", n_times, "]"),
       type    = ffbs_fn,
       control = list(
-        n_regions = N_regions, n_times = n_times, p = p,
+        n_regions = N_regions, n_times = n_times, p = p, i = i,
         a0 = constants$a0, b0 = constants$b0, w = constants$w
       )
     )

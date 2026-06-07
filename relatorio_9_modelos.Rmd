@@ -139,6 +139,12 @@ MODELOS <- list(
        eq = "$\\log\\mu_{it} = \\log\\lambda_t + \\log E_{it} + \\log\\varepsilon_{it} + \\mathbf{x}_{it}^\\top\\boldsymbol{\\beta}$")
 )
 
+# Tempos de execução observados (modelos rodam spatial + non_spatial em paralelo)
+TEMPOS_EXEC <- tibble(
+  label  = c("M1","M2","M3","M4","M5","M6","M7","M8","M9"),
+  t_min  = c(40.4, 39.9, 42.7, 40.3, 38.9, 60.0, 59.3, 40.1, 30.5)
+)
+
 MODEL_TYPES <- c("spatial", "non_spatial")
 
 # Tags por grupo funcional
@@ -289,9 +295,45 @@ fig_comp_ou_ind <- function(dir_base, arq_comp, arq_ind, titulo_comp,
   }
 }
 
-# Mínimo com NA seguro
+# Mínimo e máximo com NA seguro
 safe_min <- function(x) if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
 safe_max <- function(x) if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+
+# Dois painéis lado a lado numa única figura LaTeX
+fig_pair <- function(img1, img2, titulo1, titulo2, width = "0.48\\linewidth") {
+  ex1 <- file.exists(img1); ex2 <- file.exists(img2)
+  if (!ex1 && !ex2) return(invisible(NULL))
+  cat("\\begin{figure}[H]\n\\centering\n")
+  if (ex1) {
+    cat("\\begin{minipage}[t]{", width, "}\n\\centering\n", sep = "")
+    cat("\\caption*{\\small\\textit{", titulo1, "}}\n", sep = "")
+    cat("\\includegraphics[width=\\linewidth]{",
+        normalizePath(img1, winslash = "/"), "}\n", sep = "")
+    cat("\\end{minipage}\n")
+  }
+  if (ex1 && ex2) cat("\\hfill\n")
+  if (ex2) {
+    cat("\\begin{minipage}[t]{", width, "}\n\\centering\n", sep = "")
+    cat("\\caption*{\\small\\textit{", titulo2, "}}\n", sep = "")
+    cat("\\includegraphics[width=\\linewidth]{",
+        normalizePath(img2, winslash = "/"), "}\n", sep = "")
+    cat("\\end{minipage}\n")
+  }
+  cat("\\end{figure}\n\n")
+}
+
+# Dois painéis empilhados (spatial em cima, não-espacial embaixo)
+fig_pair_vertical <- function(dir_base, arq, titulo_fn) {
+  imgs <- setNames(
+    file.path(ROOT, dir_base, MODEL_TYPES, arq),
+    MODEL_TYPES
+  )
+  existem <- file.exists(imgs)
+  if (!any(existem)) return(invisible(NULL))
+  for (tp in MODEL_TYPES[existem]) {
+    fig_insert(imgs[tp], titulo_fn(tp))
+  }
+}
 ```
 
 ---
@@ -314,20 +356,63 @@ Este relatório descreve e compara **nove especificações bayesianas** para a c
 
 As covariáveis são:
 $x_1$ = proporção de mães com $< 7$ consultas pré-natais,
-$x_2$ = proporção de mães com ensino fundamental incompleto,
+$x_2$ = proporção de mães com ensino superior incompleto,
 $x_3$ = proporção de nascidos com baixo peso ($< 2{,}500\,\text{g}$).
 
 ## Modelo Geral
 
-Todos os modelos compartilham a verossimilhança:
+### Verossimilhança e preditor
 
-$$Y_{it} \mid \mu_{it} \;\sim\; \text{Poisson}(\mu_{it}), \qquad
-\log(\mu_{it}) = [\text{intercepto temporal}] + \log E_{it} + \log\varepsilon_{i(t)}
-                 + \mathbf{x}_{it}^\top\boldsymbol{\beta} + [s_i]$$
+Todos os modelos compartilham a mesma verossimilhança Poisson:
 
-onde $\varepsilon_{i(t)} = 1 - \sum_{k=1}^K h_{ik}\,\gamma_{k(t)}$ é a probabilidade de notificação,
-$h_{ik} \in \{0,1\}$ indica se a microrregião $i$ pertence ao cluster $k$,
-e $s_i \sim \text{ICAR}(\tau_s)$ é o efeito espacial estruturado (modelos espaciais).
+$$Y_{it} \mid \mu_{it} \sim \text{Poisson}(\mu_{it})$$
+
+com preditor log-linear:
+
+$$\log(\mu_{it}) = \underbrace{[\text{intercepto temporal}]}_{\text{varia por especificação}}
++ \log E_{it} + \log\varepsilon_{i(t)}
++ \mathbf{x}_{it}^\top\boldsymbol{\beta} + [s_i]$$
+
+A média $\mu_{it}$ é o número esperado de óbitos na microrregião $i$ no ano $t$.
+O offset $\log E_{it}$ entra fixado com coeficiente 1, normalizando pelo total de nascidos vivos
+(população em risco), de modo que $\mu_{it}/E_{it}$ é a **taxa de mortalidade** esperada.
+
+### Componente de sub-notificação: $\varepsilon_{i(t)}$
+
+O fator multiplicativo de notificação é definido como:
+
+$$\varepsilon_{i(t)} = 1 - \sum_{k=1}^{K} h_{ik}\,\gamma_{k(t)} \in (0, 1]$$
+
+**Interpretação:** $\varepsilon_{i(t)}$ representa a *fração dos óbitos que são efetivamente notificados* na microrregião $i$ no período $t$. Quanto mais próximo de 1, mais completo o registro. Quando $\varepsilon_{i,t} = 0{,}7$, estima-se que apenas 70\% dos óbitos foram declarados.
+
+A estrutura de $\varepsilon$ é construída em dois níveis:
+
+**Nível 1 — Atribuição de cluster ($h_{ik}$):** Cada microrregião $i$ pertence a exatamente um cluster de qualidade de notificação, determinado *a priori* pelo índice AI (Adequacy Index). O indicador binário $h_{ik} \in \{0,1\}$ vale 1 se a microrregião $i$ pertence ao cluster $k$ e 0 caso contrário, com $\sum_k h_{ik} = 1$. Os clusters são **ordenados do pior para o melhor** nível de notificação: o cluster 1 agrupa as regiões com maior sub-notificação (menor AI), e o cluster $K$ agrupa as de melhor qualidade.
+
+**Nível 2 — Peso de sub-notificação ($\gamma_{k(t)}$):** O parâmetro $\gamma_{k(t)} \geq 0$ representa o *desconto de notificação* aplicado ao cluster $k$. Um valor maior indica maior sub-notificação naquele cluster. A restrição de simplex progressivo:
+
+$$\gamma_1 \geq \gamma_2 \geq \cdots \geq \gamma_K \geq 0, \qquad \sum_{k=1}^K \gamma_k < 1$$
+
+é imposta *via* priori Uniforme com suporte recursivo:
+
+$$\gamma_1 \sim \text{Unif}(0,\, b_1), \quad
+\gamma_k \sim \text{Unif}\!\left(0,\; 1 - \textstyle\sum_{j<k} \gamma_j\right),\; k \geq 2$$
+
+garantindo que $\varepsilon_{i(t)} > 0$ para todas as regiões. Nos modelos estáticos (M1–M3), $\gamma_k$ é constante no tempo. Nos modelos temporais (M4–M9), $\gamma_{k,t}$ evolui ano a ano, capturando a melhoria progressiva do sistema de informação.
+
+**Relação entre $\varepsilon$ e $\gamma$:** O cluster de *pior* qualidade ($k=1$) tem $\varepsilon_{i} = 1 - \gamma_1$, e o de *melhor* qualidade ($k=K$) tem $\varepsilon_i = 1 - \gamma_K \approx 1$ (quando $\gamma_K \approx 0$). Assim, a diferença $\gamma_1 - \gamma_K$ quantifica a *desigualdade de notificação* entre os extremos.
+
+### Covariáveis $\boldsymbol{\beta}$
+
+O vetor $\mathbf{x}_{it} \in \mathbb{R}^p$ contém covariáveis de risco observadas. O efeito $\mathbf{x}_{it}^\top\boldsymbol{\beta}$ captura a variação sistemática do risco *após* descontar a sub-notificação. Cada $\beta_j$ é interpretado como a variação log-linear da taxa de mortalidade por unidade da covariável $j$: $e^{\beta_j}$ é a **razão de taxas** associada a uma unidade de mudança em $x_j$.
+
+### Efeito espacial $s_i$ (modelos espaciais)
+
+O termo $s_i$ é um efeito aleatório espacial estruturado que captura a *autocorrelação geográfica residual* — variação do risco entre microrregiões vizinhas que não é explicada pelas covariáveis nem pelos clusters de notificação. A priori ICAR (Intrinsic Conditional Autoregressive) especifica:
+
+$$s_i \mid s_{-i},\tau_s \sim \mathcal{N}\!\left(\bar{s}_{\partial i},\; \frac{1}{\tau_s\,n_{\partial i}}\right)$$
+
+onde $\bar{s}_{\partial i}$ é a média dos vizinhos de $i$ e $n_{\partial i}$ é o número de vizinhos. A precisão $\tau_s = \sigma_s^{-2}$ controla a suavidade espacial: $\tau_s$ grande $\Rightarrow$ $s_i \approx \bar{s}_{\partial i}$ (superfície suave); $\tau_s$ pequeno $\Rightarrow$ maior heterogeneidade local. A priori $\sigma_s \sim \text{Half-}t(0,1,1)$ é vagamente informativa e garante $\sigma_s > 0$.
 
 ---
 
@@ -831,102 +916,383 @@ for (m in MODELOS) {
 
 # Diagnósticos MCMC
 
+## Conceitos e Interpretação das Métricas
+
+Uma cadeia MCMC produz amostras **serialmente correlacionadas** — amostras consecutivas não são independentes porque cada passo depende do anterior. Os diagnósticos abaixo quantificam a qualidade dessas amostras e permitem avaliar a eficiência computacional e a convergência dos diferentes modelos.
+
+Como os modelos considerados possuem estruturas hierárquicas distintas e números diferentes de parâmetros, o objetivo principal não é avaliar um parâmetro isoladamente, mas comparar a qualidade global da inferência MCMC entre especificações. Por esse motivo, a Tabela \@ref(tab:diag-resumo) resume apenas os parâmetros estruturais ($\boldsymbol{\beta}$, $\tau_s$ e $\text{incr}$) e reporta tanto medidas extremas ($n_{\text{ef}}^{\min}$, $\hat{R}_{\max}$) quanto a proporção de parâmetros que apresentam sinais de mistura inadequada.
+
+### Tamanho efetivo de amostra ($n_{\text{ef}}$)
+
+$$
+n_{\text{ef}} =
+\frac{S}
+     {1 + 2\sum_{\ell=1}^{\infty}\hat{\rho}_{\ell}}
+$$
+
+onde $S$ é o número de amostras pós-burnin e $\hat{\rho}_{\ell}$ é a autocorrelação no lag $\ell$. O tamanho efetivo pode ser interpretado como o número de amostras independentes equivalentes produzidas pela cadeia.
+
+Com $S = 4.000$ amostras pós-burnin (duas cadeias de 2.000 iterações), um valor $n_{\text{ef}} = 400$ significa que apenas cerca de 10\% das amostras carregam informação efetivamente nova. Valores baixos indicam forte dependência serial e mistura lenta da cadeia.
+
+**Critério adotado:** $n_{\text{ef}} \geq 400$.
+
+Além do menor tamanho efetivo observado ($n_{\text{ef}}^{\min}$), a tabela reporta a proporção de parâmetros estruturais com $n_{\text{ef}} < 400$, permitindo avaliar se eventuais problemas de mistura são pontuais ou disseminados ao longo do modelo.
+
+### Diagnóstico de Gelman--Rubin ($\hat{R}$)
+
+$$
+\hat{R}
+=
+\sqrt{
+\frac{\widehat{\mathrm{Var}}^{+}(\theta \mid y)}
+     {W}
+}
+$$
+
+onde $W$ representa a variância média dentro das cadeias e $\widehat{\mathrm{Var}}^{+}(\theta \mid y)$ é uma estimativa da variância marginal posterior obtida pela combinação das cadeias.
+
+O diagnóstico compara a variabilidade entre cadeias com a variabilidade interna de cada cadeia. Quando todas as cadeias convergem para a mesma distribuição estacionária, espera-se que $\hat{R}$ se aproxime de 1.
+
+Valores elevados sugerem que as cadeias ainda estão explorando regiões distintas do espaço paramétrico, indicando convergência incompleta.
+
+**Critério adotado:** $\hat{R} < 1{,}05$.
+
+A tabela apresenta o maior valor observado ($\hat{R}_{\max}$) e também a proporção de parâmetros estruturais que violam esse critério. Essa segunda medida é particularmente útil para distinguir entre problemas localizados e dificuldades generalizadas de convergência.
+
+### Proporção de parâmetros problemáticos
+
+As proporções reportadas na tabela são calculadas sobre todos os parâmetros estruturais monitorados em cada modelo.
+
+Em particular, são apresentadas
+
+$$
+\Pr(n_{\text{ef}} < 400)
+$$
+
+e
+
+$$
+\Pr(\hat{R} > 1.05),
+$$
+
+isto é, a porcentagem de parâmetros que apresentam tamanho efetivo insuficiente ou evidência de não convergência.
+
+Essas medidas fornecem uma visão mais robusta da qualidade da inferência do que diagnósticos baseados exclusivamente no pior parâmetro. Um único parâmetro com mistura lenta pode produzir um valor extremo sem comprometer substancialmente o comportamento global da cadeia. Em contraste, uma elevada proporção de parâmetros problemáticos indica dificuldades sistemáticas de convergência e reduz a confiabilidade das estimativas posteriores.
+
+### Interpretação conjunta
+
+Os diagnósticos devem ser analisados em conjunto. Idealmente, um modelo deve apresentar:
+
+- $n_{\text{ef}}^{\min}$ acima do limite recomendado;
+- $\hat{R}_{\max}$ próximo de 1;
+- baixa proporção de parâmetros com $n_{\text{ef}} < 400$;
+- baixa proporção de parâmetros com $\hat{R} > 1.05$.
+
+Dessa forma, a tabela permite comparar simultaneamente a qualidade preditiva dos modelos e a eficiência de seus algoritmos de inferência, identificando especificações que oferecem bom ajuste sem comprometer a estabilidade da estimação bayesiana.
+
+Parâmetros temporais ($\lambda_t$, $\beta_{0t}$, $\delta_t$ e $\gamma_{k,t}$) são excluídos deste resumo, pois possuem estruturas de dependência específicas e são analisados separadamente nas seções dedicadas aos diagnósticos de autocorrelação e trajetória temporal.
+
 ## Resumo Numérico por Modelo
 
 ```{r tab-diag-resumo, results='asis'}
-tab_diag <- map_dfr(seq_len(nrow(resultados)), function(i) {
+PATTERN_STRUCT <- "^(beta\\[|tau_s|sigma_s|incr\\[)"
+
+tab_diag <- purrr::map_dfr(seq_len(nrow(resultados)), function(i) {
+
   dados <- safe_read(file.path(resultados$pasta[i], "acf_diagnostics.csv"))
-  if (is.null(dados)) return(NULL)
 
-  # Separa parâmetros estruturais dos temporais
+  # -------------------------------------------------------------------------
+  # FALLBACK (M9 e versões antigas)
+  # -------------------------------------------------------------------------
+  if (is.null(dados)) {
+
+    resumo_path <- file.path(ROOT,
+                             resultados$dir[i],
+                             "resumo_comparativo.csv")
+
+    resumo <- safe_read(resumo_path)
+
+    if (is.null(resumo))
+      return(NULL)
+
+    tipo_str <- resultados$tipo[i]
+
+    row <- resumo |>
+      dplyr::filter(model == tipo_str)
+
+    if (nrow(row) == 0)
+      return(NULL)
+
+    ess_cols <- intersect(
+      names(row),
+      c("ess_beta_min",
+        "ess_lambda_min",
+        "ess_gamma1_min",
+        "ess_incr_min",
+        "ess_delta_min",
+        "ess_gamma_min")
+    )
+
+    rhat_cols <- intersect(
+      names(row),
+      c("rhat_beta_max",
+        "rhat_lambda_max",
+        "rhat_gamma1_max",
+        "rhat_incr_max",
+        "rhat_delta_max",
+        "rhat_gamma_max")
+    )
+
+    ess_val <- if(length(ess_cols))
+      safe_min(unlist(row[ess_cols]))
+    else
+      NA_real_
+
+    rhat_val <- if(length(rhat_cols))
+      safe_max(unlist(row[rhat_cols]))
+    else
+      NA_real_
+
+    return(
+      tibble::tibble(
+        Modelo         = resultados$label[i],
+        Tipo           = lbl_tipo(resultados$tipo[i]),
+        ESS_min        = ess_val,
+        ESS_med        = NA_real_,
+        Rhat_max       = rhat_val,
+        prop_ess_low   = NA_real_,
+        prop_rhat_bad  = NA_real_,
+        prop_inf_010   = NA_real_,
+        prop_inf_005   = NA_real_,
+        fonte          = "resumo"
+      )
+    )
+  }
+
+  # -------------------------------------------------------------------------
+  # CAMINHO NORMAL
+  # -------------------------------------------------------------------------
+
   struct <- dados |>
-    filter(!str_detect(parameter,
-      "^(beta0t|lambda|delta|gamma\\[)\\[?\\d"))
+    dplyr::filter(stringr::str_detect(parameter,
+                                      PATTERN_STRUCT))
 
-  tibble(
-    Modelo       = resultados$label[i],
-    Tipo         = lbl_tipo(resultados$tipo[i]),
-    ESS_min      = safe_min(struct$ess),
-    ESS_med      = round(mean(struct$ess, na.rm = TRUE)),
-    Rhat_max     = safe_max(struct$rhat),
-    lag010_max   = safe_max(struct$lag_0_10),
-    lag005_max   = safe_max(struct$lag_0_05),
-    acf_lag1_max = safe_max(abs(struct$acf_lag1))
+  if (nrow(struct) == 0)
+    return(NULL)
+
+  tibble::tibble(
+    Modelo        = resultados$label[i],
+    Tipo          = lbl_tipo(resultados$tipo[i]),
+
+    ESS_min       = safe_min(struct$ess),
+    ESS_med       = round(mean(struct$ess, na.rm = TRUE)),
+
+    Rhat_max      = safe_max(struct$rhat),
+
+    prop_ess_low =
+      100 * mean(struct$ess < 400,
+                 na.rm = TRUE),
+
+    prop_rhat_bad =
+      100 * mean(struct$rhat > 1.05,
+                 na.rm = TRUE),
+
+    prop_inf_010 =
+      100 * mean(is.infinite(struct$lag_0_10),
+                 na.rm = TRUE),
+
+    prop_inf_005 =
+      100 * mean(is.infinite(struct$lag_0_05),
+                 na.rm = TRUE),
+
+    fonte = "acf"
   )
 })
 
-if (nrow(tab_diag) > 0) {
-  best_ess  <- which.max(tab_diag$ESS_min)
-  worst_rhat<- which.max(tab_diag$Rhat_max)
+# -----------------------------------------------------------------------------
+# TABELA
+# -----------------------------------------------------------------------------
 
-  tab_diag |>
-    arrange(Tipo, Modelo) |>
+if (!is.null(tab_diag) && nrow(tab_diag) > 0) {
+
+  tab_ord <- tab_diag |>
+    dplyr::arrange(Tipo, Modelo)
+
+  ess_low_flag  <- !is.na(tab_ord$ESS_min)  &
+                   tab_ord$ESS_min < 400
+
+  rhat_bad_flag <- !is.na(tab_ord$Rhat_max) &
+                   tab_ord$Rhat_max >= 1.05
+
+  tab_show <- tab_ord |>
+    dplyr::select(-fonte) |>
+    dplyr::mutate(
+
+      ESS_min  = round(ESS_min),
+      ESS_med  = round(ESS_med),
+
+      Rhat_max = round(Rhat_max, 3),
+
+      `ESS<400 (%)` =
+        ifelse(is.na(prop_ess_low),
+               "—",
+               sprintf("%.1f", prop_ess_low)),
+
+      `Rhat>1.05 (%)` =
+        ifelse(is.na(prop_rhat_bad),
+               "—",
+               sprintf("%.1f", prop_rhat_bad)),
+
+      `l0.10=∞ (%)` =
+        ifelse(is.na(prop_inf_010),
+               "—",
+               sprintf("%.1f", prop_inf_010)),
+
+      `l0.05=∞ (%)` =
+        ifelse(is.na(prop_inf_005),
+               "—",
+               sprintf("%.1f", prop_inf_005))
+    ) |>
+    dplyr::select(
+      Modelo,
+      Tipo,
+      ESS_min,
+      ESS_med,
+      Rhat_max,
+      `ESS<400 (%)`,
+      `Rhat>1.05 (%)`,
+      `l0.10=∞ (%)`,
+      `l0.05=∞ (%)`
+    )
+
+  tab_show |>
     tbl_std(
-      caption   = "Resumo dos diagnósticos MCMC por modelo (parâmetros estruturais). $\\hat{R} < 1.05$ e $n_{\\text{ef}} > 400$ são critérios de adequação.",
-      col_names = c("Modelo", "Tipo",
-                    "$n_{\\text{ef}}^{\\min}$", "$\\bar{n}_{\\text{ef}}$",
-                    "$\\hat{R}_{\\max}$",
-                    "$l_{0.10}^{\\max}$", "$l_{0.05}^{\\max}$",
-                    "$|\\rho_1|_{\\max}$"),
+      caption =
+        paste0(
+          "Resumo dos diagnósticos MCMC dos parâmetros estruturais ",
+          "($\\boldsymbol{\\beta}$, $\\tau_s$, $\\text{incr}$). ",
+          "São reportados o menor e o tamanho efetivo médio, ",
+          "o maior $\\hat{R}$ e a proporção de parâmetros com ",
+          "ESS < 400, $\\hat{R}>1.05$ e lags infinitos. ",
+          "M9 pode utilizar fallback do resumo\\_comparativo.csv ",
+          "quando acf\\_diagnostics.csv não estiver disponível."
+        ),
+      col_names = c(
+        "Modelo",
+        "Tipo",
+        "$n_{ef}^{min}$",
+        "$\\bar n_{ef}$",
+        "$\\hat R_{max}$",
+        "\\% ESS<400",
+        "\\% $\\hat R>1.05$",
+        "\\% $l_{0.10}=\\infty$",
+        "\\% $l_{0.05}=\\infty$"
+      ),
       font = 8
     ) |>
-    column_spec(5, color = ifelse(tab_diag[order(tab_diag$Tipo, tab_diag$Modelo),]$Rhat_max > 1.05,
-                                  "red", "black"))
+    column_spec(
+      3,
+      color = ifelse(ess_low_flag,
+                     "red",
+                     "black"),
+      bold  = ess_low_flag
+    ) |>
+    column_spec(
+      5,
+      color = ifelse(rhat_bad_flag,
+                     "red",
+                     "black"),
+      bold  = rhat_bad_flag
+    )
+
 } else {
-  cat("\\textit{Arquivos acf\\_diagnostics.csv não encontrados.}\n")
+
+  cat(
+    "\\textit{Arquivos acf\\_diagnostics.csv não encontrados em nenhum modelo.}"
+  )
+
 }
 ```
 
+---
+
 ## Traceplots de $\boldsymbol{\beta}$ e $\tau_s$
+
+Cada painel exibe a trajetória da cadeia (linha fina) e a média ergódica acumulada
+(linha espessa). Convergência é indicada pela estabilização da média ergódica
+e pela sobreposição das duas cadeias.
 
 ```{r traceplots, results='asis'}
 for (m in MODELOS) {
   cat(sprintf("\n\n### %s — %s\n\n", m$label, m$nome))
-  for (tp in MODEL_TYPES) {
-    img <- file.path(ROOT, m$dir, tp, "traceplots_beta.png")
-    if (file.exists(img))
-      fig_insert(img,
-        paste0("Traceplots $\\boldsymbol{\\beta}$",
-               if (tp == "spatial") " e $\\tau_s$" else "",
-               " — ", m$label, " | ", lbl_tipo(tp)))
-  }
+
+  img_sp  <- file.path(ROOT, m$dir, "spatial",     "traceplots_beta.png")
+  img_nsp <- file.path(ROOT, m$dir, "non_spatial", "traceplots_beta.png")
+  fig_pair(img_sp, img_nsp,
+           paste0("Traceplots $\\boldsymbol{\\beta}$ + $\\tau_s$ — Espacial"),
+           paste0("Traceplots $\\boldsymbol{\\beta}$ — Não-espacial"))
 }
 ```
 
 ## Função de Autocorrelação — $\boldsymbol{\beta}$
 
+Barras representam a ACF em cada lag. Linhas azuis tracejadas: limiar $|0{,}10|$.
+Linhas vermelhas pontilhadas: limiar $|0{,}05|$. Barras que permanecem acima de
+$|0{,}10|$ em lags altos indicam mistura lenta e $n_{\text{ef}}$ baixo.
+
 ```{r acf-beta, results='asis'}
 for (m in MODELOS) {
   cat(sprintf("\n\n### %s — %s\n\n", m$label, m$nome))
-  for (tp in MODEL_TYPES) {
-    img <- file.path(ROOT, m$dir, tp, "acf_beta.png")
-    if (file.exists(img))
-      fig_insert(img,
-        paste0("ACF de $\\boldsymbol{\\beta}$ — ", m$label, " | ", lbl_tipo(tp)))
-  }
+
+  img_sp  <- file.path(ROOT, m$dir, "spatial",     "acf_beta.png")
+  img_nsp <- file.path(ROOT, m$dir, "non_spatial", "acf_beta.png")
+  fig_pair(img_sp, img_nsp,
+           paste0("ACF $\\boldsymbol{\\beta}$ — Espacial (", m$label, ")"),
+           paste0("ACF $\\boldsymbol{\\beta}$ — Não-espacial (", m$label, ")"))
 }
 ```
 
-## ACF do Componente Temporal
+## ACF do Componente Temporal Principal
+
+Para modelos com $\lambda_t$ (FFBS Gama), espera-se ACF muito baixa desde o lag 1,
+pois o amostrador é conjugado exato. Para $\beta_{0t}$ (RW-MH) e $\gamma_{k,t}$ (AF-Slice),
+a ACF tende a ser mais alta — valores $\infty$ na tabela de resumo são normais para esses parâmetros.
 
 ```{r acf-temporal, results='asis'}
-# Mapeamento de arquivo ACF por tag
-acf_arq <- function(tag) {
-  if (tag %in% TAGS_DELTA)  return("acf_delta.png")
-  if (tag %in% TAGS_LAMBDA) return("acf_lambda.png")
-  if (tag %in% TAGS_BETA0T) return("acf_beta0t.png")
+acf_arq_fn <- function(tag) {
+  if (tag %in% TAGS_DELTA)                  return("acf_delta.png")
+  if (tag %in% TAGS_LAMBDA)                 return("acf_lambda.png")
+  if (tag %in% TAGS_BETA0T)                 return("acf_beta0t.png")
+  if (tag %in% TAGS_PROP)                   return("acf_lambda.png")
   return(NULL)
 }
 
 for (m in MODELOS) {
-  arq <- acf_arq(m$tag)
+  arq <- acf_arq_fn(m$tag)
   if (is.null(arq)) next
   cat(sprintf("\n\n### %s — %s\n\n", m$label, m$nome))
-  for (tp in MODEL_TYPES) {
-    img <- file.path(ROOT, m$dir, tp, arq)
-    if (file.exists(img))
-      fig_insert(img,
-        paste0("ACF do intercepto temporal — ", m$label, " | ", lbl_tipo(tp)))
+
+  img_sp  <- file.path(ROOT, m$dir, "spatial",     arq)
+  img_nsp <- file.path(ROOT, m$dir, "non_spatial", arq)
+  fig_pair(img_sp, img_nsp,
+    paste0("ACF componente temporal — Espacial (", m$label, ")"),
+    paste0("ACF componente temporal — Não-espacial (", m$label, ")"))
+
+  # M9: ACF adicional de gamma_1[t] e incr[k]
+  if (m$tag %in% TAGS_PROP) {
+    img_g1_sp  <- file.path(ROOT, m$dir, "spatial",     "acf_gamma1.png")
+    img_g1_nsp <- file.path(ROOT, m$dir, "non_spatial", "acf_gamma1.png")
+    if (file.exists(img_g1_sp) || file.exists(img_g1_nsp))
+      fig_pair(img_g1_sp, img_g1_nsp,
+        "ACF $\\gamma_{1t}$ — Espacial (M9)",
+        "ACF $\\gamma_{1t}$ — Não-espacial (M9)")
+
+    img_ik_sp  <- file.path(ROOT, m$dir, "spatial",     "acf_incr_kappa.png")
+    img_ik_nsp <- file.path(ROOT, m$dir, "non_spatial", "acf_incr_kappa.png")
+    if (file.exists(img_ik_sp) || file.exists(img_ik_nsp))
+      fig_pair(img_ik_sp, img_ik_nsp,
+        "ACF incrementos $\\text{incr}[k]$ — Espacial (M9)",
+        "ACF incrementos $\\text{incr}[k]$ — Não-espacial (M9)")
   }
 }
 ```
@@ -942,16 +1308,17 @@ if (exists("tab_crit") && nrow(tab_crit) > 0 &&
     exists("tab_diag") && nrow(tab_diag) > 0) {
 
   tab_final <- tab_crit |>
-    left_join(tab_diag, by = c("Modelo", "Tipo")) |>
+    left_join(tab_diag |> select(Modelo, Tipo, Rhat_max, ESS_min),
+              by = c("Modelo", "Tipo")) |>
     arrange(WAIC) |>
     select(Modelo, Tipo, WAIC, LPML, Rhat_max, ESS_min)
 
-  best_row <- which.min(tab_final$WAIC)
-  # Vetor lógico sem NA: NA vira FALSE
+  best_row  <- which.min(tab_final$WAIC)
   rhat_over <- !is.na(tab_final$Rhat_max) & (tab_final$Rhat_max > 1.05)
+
   tab_final |>
     tbl_std(
-      caption   = "Quadro comparativo final. Ordenado por WAIC crescente. Linha verde = melhor modelo.",
+      caption   = "Quadro comparativo final (ordenado por WAIC). Verde = melhor modelo global. Vermelho em $\\hat{R}$: não-convergência ($\\hat{R} \\geq 1{,}05$).",
       col_names = c("Modelo", "Tipo", "WAIC", "LPML",
                     "$\\hat{R}_{\\max}$", "$n_{\\text{ef}}^{\\min}$"),
       font = 9

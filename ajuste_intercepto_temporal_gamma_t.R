@@ -231,7 +231,7 @@ run_model <- function(model_type, output_dir) {
   Rmcmc <- buildMCMC(conf)
   Cmcmc <- compileNimble(Rmcmc, project = model)
   
-  # ── MCMC ──────────────────────────────────────────────────────────────────
+  # ── MCMC ───────────────────────────────────────────────────────────────────
   niter   <- 50000; nburnin <- 10000; nchains <- 2; thin <- 10
   cat(sprintf("[%s] niter=%d | nburnin=%d | thin=%d\n",
               model_type, niter, nburnin, thin))
@@ -246,7 +246,7 @@ run_model <- function(model_type, output_dir) {
   mcmc_list_full <- mcmc.list(lapply(1:nchains, function(ch) as.mcmc(samples[[ch]])))
   rm(samples); gc()
   
-  # ── Auxiliares ────────────────────────────────────────────────────────────
+  # ── Auxiliares ─────────────────────────────────────────────────────────────
   safe_hpd <- function(sv) {
     if (var(sv) < 1e-12) return(c(NA_real_, NA_real_))
     as.numeric(HPDinterval(as.mcmc(sv), prob = 0.95))
@@ -449,7 +449,7 @@ run_model <- function(model_type, output_dir) {
     width = 12, height = 10
   )
   
-  # ── WAIC e LPML ───────────────────────────────────────────────────────────
+  # ── WAIC e LPML ──────────────────────────────────────────────────────────
   loglik_names <- grep("logLik_Y", colnames(samples_mat), value = TRUE)
   waic <- NA_real_; LPML <- NA_real_
   if (length(loglik_names) > 0) {
@@ -463,7 +463,29 @@ run_model <- function(model_type, output_dir) {
     cat(sprintf("[%s] WAIC = %.2f | LPML = %.2f\n", model_type, waic, LPML))
   }
   
-  # ── Diagnósticos ACF (organizados como no exemplo) ───────────────────────
+  # ── Diagnósticos ACF (completo com tabela CSV) ───────────────────────────
+  # Estrutura de parâmetros: beta, beta0t, tau_s (se espacial)
+  params_struct <- c(beta_names, beta0t_names,
+                     if (is_spatial) "tau_s" else character(0))
+  all_diag <- c(params_struct, as.vector(gamma_names_mat))
+  
+  ESS_struct  <- effectiveSize(mcmc_list_full[, params_struct])
+  Rhat_struct <- safe_gelman(mcmc_list_full[, params_struct])
+  
+  acf_results <- do.call(rbind, lapply(all_diag, function(nm) {
+    ac   <- acf(samples_mat[, nm], lag.max = 200, plot = FALSE)
+    lags <- as.vector(ac$lag[-1]); acfs <- as.vector(ac$acf[-1])
+    ess_v  <- tryCatch(as.numeric(effectiveSize(mcmc_list_full[, nm])),
+                       error = function(e) NA_real_)
+    rhat_v <- tryCatch(safe_gelman(mcmc_list_full[, nm]),
+                       error = function(e) NA_real_)
+    tibble(Parameter = nm, ESS = ess_v, Rhat = rhat_v,
+           lag_0.10 = { v <- lags[which(abs(acfs) < 0.10)[1]]; ifelse(is.na(v), Inf, v) },
+           lag_0.05 = { v <- lags[which(abs(acfs) < 0.05)[1]]; ifelse(is.na(v), Inf, v) },
+           acf_lag1 = acfs[1])
+  }))
+  write_csv(acf_results, file.path(scenario_dir, "acf_diagnostics.csv"))
+  
   # ACF de beta (e tau_s)
   params_acf_beta <- c(beta_names, if (is_spatial) "tau_s" else character(0))
   acf_beta_df <- do.call(rbind, lapply(params_acf_beta, function(nm) {
