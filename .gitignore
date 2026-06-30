@@ -3,3 +3,21 @@
 .RData
 .Ruserdata
 .positai
+
+# Extensões personalizadas para ignorar arquivos pesados e relatórios
+*.RData
+.RDataTmp
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.html
+
+# Arquivos temporários criados na compilação do LaTeX (via RMarkdown)
+*.aux
+*.log
+*.toc
+*.synctex.gz
+*.blg
+*.bbl
+*.tex
