@@ -1,5 +1,5 @@
 # ==============================================================================
-# M6: Lambda[t] GLOBAL + Epsilon[i,t] via Gamma[k,t] 
+# M9: Lambda[t] GLOBAL + Epsilon[i,t] via Gamma[k,t] Monotônico (Decrescente)
 # COMPLETO vs SIMPLIFICADO - SCRIPT EXPANDIDO
 # ==============================================================================
 
@@ -95,8 +95,8 @@ ordered_labels <- unique(paste(make_label(region_names[ordered_idx]), "- Cluster
 # ==============================================================================
 run_model <- function(model_type, output_dir_base) {
   
-  cat(sprintf("\n%s=== INICIANDO EXECUÇÃO DO CENÁRIO %s ===%s\n", 
-              paste(rep("=", 25), collapse = ""), model_type, paste(rep("=", 25), collapse = "")))
+  cat(sprintf("\n%s=== MODELO M9 (MONOTÔNICO DINÂMICO) %s ===%s\n", 
+              paste(rep("=", 20), collapse = ""), model_type, paste(rep("=", 20), collapse = "")))
   
   if (model_type == "COMPLETO") {
     x_data <- x_full; p <- 3
@@ -115,18 +115,42 @@ run_model <- function(model_type, output_dir_base) {
   )
   data_nimble <- list(Y = Y_mat, E = E_norm, x = x_data, h = h_mat)
   
-  code_M6 <- nimbleCode({
+  # ============================================================================
+  # CÓDIGO NIMBLE - ATUALIZADO PARA MONOTONICIDADE
+  # ============================================================================
+  code_M9 <- nimbleCode({
     for (j in 1:p) { beta[j] ~ dnorm(0, sd = 1) }
-    for (t in 1:n_times) {
-      gamma[1, t] ~ dunif(a_unif, b_unif)
-      for (k in 2:K) { gamma[k, t] ~ dunif(0, 1 - sum(gamma[1:(k-1), t])) }
+    
+    # Desvio padrão para a evolução suave do sub-registo
+    for(k in 1:K) {
+      sigma_gamma[k] ~ dunif(0, 0.05)
     }
+    
+    # TEMPO t = 1: A âncora clássica no primeiro ano
+    gamma[1, 1] ~ dunif(a_unif, b_unif)
+    for (k in 2:K) {
+      gamma[k, 1] ~ dunif(0, 1 - sum(gamma[1:(k-1), 1]))
+    }
+    
+    # TEMPO t > 1: Monotonicidade (Passeio Aleatório Truncado)
+    # T(0, gamma[k, t-1]) garante que o sub-registo nunca será maior que no ano anterior
+    for (t in 2:n_times) {
+      for (k in 1:K) {
+        gamma[k, t] ~ dnorm(gamma[k, t-1], sd = sigma_gamma[k]) T(0, gamma[k, t-1])
+      }
+    }
+    
+    # Cálculo do Epsilon dinâmico, com garantia de não-piora epidemiológica
     for (i in 1:n_regions) {
-      for (t in 1:n_times) { epsilon[i, t] <- 1 - inprod(h[i, 1:K], gamma[1:K, t]) }
+      for (t in 1:n_times) { 
+        epsilon[i, t] <- 1 - inprod(h[i, 1:K], gamma[1:K, t]) 
+      }
     }
+    
     sigma_s ~ T(dt(0, 1, 1), 0, )
     tau_s   <- 1 / (sigma_s^2)
     s[1:n_regions] ~ dcar_normal(adj[1:n_adj], weights[1:n_adj], num[1:n_regions], tau_s, zero_mean = 1)
+    
     for (t in 1:n_times) { lambda[t] ~ dgamma(a0, b0) }
     
     for (i in 1:n_regions) {
@@ -139,6 +163,7 @@ run_model <- function(model_type, output_dir_base) {
     }
   })
   
+  # FFBS LAMBDA GLOBAL
   ffbs_lambda_global <- nimbleFunction(
     contains = sampler_BASE,
     setup = function(model, mvSaved, target, control) {
@@ -178,23 +203,47 @@ run_model <- function(model_type, output_dir_base) {
     methods = list(reset = function() {})
   )
   
+  # INITS ATUALIZADOS E MONOTONICOS
   set.seed(42)
-  gamma_init <- matrix(0, K, n_times); gamma_init[1, ] <- runif(n_times, 0.01, 0.03)
-  for (k in 2:K) gamma_init[k, ] <- runif(n_times, 0, 0.01)
+  # Criar matrizes iniciais que respeitam estritamente a monotonicidade
+  gamma_init_1 <- matrix(0, K, n_times)
+  gamma_init_2 <- matrix(0, K, n_times)
   
-  inits_1 <- list(lambda = rep(1.0, n_times), beta = rep(0, p), gamma = gamma_init, sigma_s = 0.5, s = rep(0, N_regions))
-  inits_2 <- list(lambda = rgamma(n_times, a0, b0), beta = rnorm(p, 0, 0.3), gamma = gamma_init * 0.5, sigma_s = 1.0, s = rep(0, N_regions))
+  # Inicializa t=1 (dentro dos limites corretos)
+  gamma_init_1[1, 1] <- 0.04
+  gamma_init_2[1, 1] <- 0.03
+  for(k in 2:K) {
+    gamma_init_1[k, 1] <- 0.01
+    gamma_init_2[k, 1] <- 0.005
+  }
   
-  model  <- nimbleModel(code = code_M6, constants = constants, data = data_nimble, inits = inits_1, check = FALSE)
+  # Força decréscimo estrito de 1% e 2% ao ano para iniciar o MCMC de forma segura
+  for(t in 2:n_times) {
+    gamma_init_1[, t] <- gamma_init_1[, t-1] * 0.99
+    gamma_init_2[, t] <- gamma_init_2[, t-1] * 0.98
+  }
+  
+  inits_1 <- list(lambda = rep(1.0, n_times), beta = rep(0, p), gamma = gamma_init_1, sigma_gamma = rep(0.01, K), sigma_s = 0.5, s = rep(0, N_regions))
+  inits_2 <- list(lambda = rgamma(n_times, a0, b0), beta = rnorm(p, 0, 0.3), gamma = gamma_init_2, sigma_gamma = rep(0.02, K), sigma_s = 1.0, s = rep(0, N_regions))
+  
+  model  <- nimbleModel(code = code_M9, constants = constants, data = data_nimble, inits = inits_1, check = FALSE)
   Cmodel <- compileNimble(model)
   
   conf <- configureMCMC(model)
   conf$removeSamplers("lambda")
   conf$addSampler(target = paste0("lambda[1:", n_times, "]"), type = ffbs_lambda_global, 
                   control = list(n_times = n_times, n_regions = N_regions, p = p, a0 = a0, b0 = b0, w = w))
+  
+  # Slice sampler para suportar o truncamento forte da monotonicidade
   conf$removeSamplers("gamma")
-  for (k in 1:K) for (t in 1:n_times) conf$addSampler(target = paste0("gamma[", k, ", ", t, "]"), type = "slice")
-  conf$addMonitors(c("beta", "gamma", "epsilon", "lambda", "logLik_Y", "s", "sigma_s"))
+  for (k in 1:K) {
+    for (t in 1:n_times) {
+      conf$addSampler(target = paste0("gamma[", k, ", ", t, "]"), type = "slice")
+    }
+  }
+  
+  # Monitores atualizados (sigma_gamma no lugar de logit)
+  conf$addMonitors(c("beta", "gamma", "sigma_gamma", "epsilon", "lambda", "logLik_Y", "s", "sigma_s"))
   
   Rmcmc <- buildMCMC(conf)
   Cmcmc <- compileNimble(Rmcmc, project = model)
@@ -228,7 +277,7 @@ run_model <- function(model_type, output_dir_base) {
   
   lambda_names <- paste0("lambda[", 1:n_times, "]")
   lambda_summary <- do.call(rbind, lapply(1:n_times, function(t) {
-    nm <- lambda_names[t]; sv <- samples_mat[, nm]; hpd <- safe_hpd(sv) # <--- CORRIGIDO
+    nm <- lambda_names[t]; sv <- samples_mat[, nm]; hpd <- safe_hpd(sv)
     data.frame(Time = t, Ano = anos_label[t], Mean = mean(sv), SD = sd(sv), HPD_Lower = hpd[1], HPD_Upper = hpd[2],
                ESS = as.numeric(effectiveSize(mcmc_list_full[, nm])), Rhat = safe_gelman(mcmc_list_full[, nm]), stringsAsFactors = FALSE)
   }))
@@ -242,7 +291,6 @@ run_model <- function(model_type, output_dir_base) {
   }))
   write_csv(gamma_summary, file.path(scenario_dir, "gamma_summary.csv"))
   
-  # Adicionando extrações de S e Epsilon para as análises espaciais originais
   s_names <- paste0("s[", 1:N_regions, "]")
   s_summary <- do.call(rbind, lapply(1:N_regions, function(i) {
     nm <- s_names[i]; sv <- samples_mat[, nm]; hpd <- safe_hpd(sv)
@@ -258,12 +306,10 @@ run_model <- function(model_type, output_dir_base) {
   }))
   write_csv(epsilon_summary, file.path(scenario_dir, "epsilon_regions_summary.csv"))
   
-  # ----------------------------------------------------------------------------
-  # NOVO INJETADO: DIAGNÓSTICO ACF COMPLETO (INCLUINDO GAMMA)
-  # ----------------------------------------------------------------------------
+  # DIAGNÓSTICO ACF COMPLETO
   cat(sprintf("[%s] Calculando diagnósticos estendidos de autocorrelação (ACF)...\n", model_type))
   gamma_diag_names <- paste0("gamma[", rep(1:K, each = n_times), ", ", rep(1:n_times, times = K), "]")
-  all_params_diag  <- c(beta_names, gamma_diag_names, "sigma_s", lambda_names)
+  all_params_diag  <- c(beta_names, gamma_diag_names, "sigma_s", paste0("sigma_gamma[", 1:K, "]"), lambda_names)
   all_params_diag  <- all_params_diag[all_params_diag %in% colnames(samples_mat)]
   
   acf_results <- do.call(rbind, lapply(all_params_diag, function(nm) {
@@ -287,9 +333,8 @@ run_model <- function(model_type, output_dir_base) {
   LPML   <- sum(log(1 / apply(lm_mat, 2, function(x) mean(exp(-x)))))
   
   # ============================================================================
-  # GERAR PLOTS ESPECÍFICOS DESTE CENÁRIO (IGUAL AO SEU SCRIPT DE 600 LINHAS)
+  # GRÁFICOS
   # ============================================================================
-  # Plot Lambda Global
   p_lam <- ggplot(lambda_summary, aes(x = Time, y = Mean)) +
     geom_line(color = "blue", linewidth = 1) +
     geom_ribbon(aes(ymin = HPD_Lower, ymax = HPD_Upper), fill = "blue", alpha = 0.15) +
@@ -297,7 +342,6 @@ run_model <- function(model_type, output_dir_base) {
     theme_bw() + labs(title = paste("Trajetória Lambda Global -", model_type), x = "Ano", y = expression(lambda[t]))
   ggsave(file.path(scenario_dir, "plot_lambda_global.png"), p_lam, width = 8, height = 5)
   
-  # Plot Epsilon das Regiões Selecionadas
   eps_sub <- epsilon_summary %>% filter(Region_Index %in% ordered_idx)
   eps_sub$Region_Cluster <- factor(paste(make_label(eps_sub$Region), "- Cluster", eps_sub$Cluster), levels = ordered_labels)
   
@@ -310,7 +354,6 @@ run_model <- function(model_type, output_dir_base) {
     labs(title = paste("Efeito Epsilon_it por Região - Selecionadas (", model_type, ")"), x = "Ano", y = expression(epsilon[it]))
   ggsave(file.path(scenario_dir, "plot_epsilon_regioes.png"), p_eps, width = 12, height = 9)
   
-  # Plot Efeitos Espaciais s[i]
   s_sub <- s_summary %>% filter(Region_Index %in% ordered_idx)
   s_sub$Region_Cluster <- factor(paste(make_label(s_sub$Region), "- Cluster", s_sub$Cluster), levels = ordered_labels)
   
@@ -330,7 +373,7 @@ run_model <- function(model_type, output_dir_base) {
 # ==============================================================================
 # EXECUÇÃO DA COMPARAÇÃO ENRE OS CENÁRIOS
 # ==============================================================================
-output_dir <- "C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_M6_lambda_global_epsilon_it"
+output_dir <- "C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicação/resultados_M9_lambda_global_epsilon_it_gamma_dinamico"
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 resultados <- list()
@@ -355,7 +398,7 @@ ggsave(file.path(output_dir, "beta_COMPARATIVO.png"),
          geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
          scale_color_manual(values = c("COMPLETO" = "steelblue", "SIMPLIFICADO" = "darkorange")) +
          theme_bw(base_size = 13) + theme(legend.position = "bottom") +
-         labs(title = "Comparação Coeficientes beta - M6", y = expression(beta)),
+         labs(title = "Comparação Coeficientes beta - M9", y = expression(beta)),
        width = 10, height = 6)
 
 gamma_C <- read_csv(file.path(output_dir, "COMPLETO", "gamma_summary.csv"), show_col_types = FALSE)
@@ -370,7 +413,7 @@ ggsave(file.path(output_dir, "gamma_COMPARATIVO.png"),
          facet_wrap(~ Cluster, scales = "free_y", ncol = 2) +
          scale_x_continuous(breaks = seq(1, n_times, by = 5), labels = anos_label[seq(1, n_times, by = 5)]) +
          theme_bw(base_size = 11) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8), legend.position = "bottom") +
-         labs(title = "Comparação gamma[k,t] temporal: COMPLETO vs SIMPLIFICADO - M6", x = "Ano", y = expression(gamma[k][t])),
+         labs(title = "Comparação gamma[k,t] temporal: COMPLETO vs SIMPLIFICADO - M9", x = "Ano", y = expression(gamma[k][t])),
        width = 12, height = 8)
 
 ggsave(file.path(output_dir, "WAIC_COMPARATIVO.png"),
@@ -378,7 +421,7 @@ ggsave(file.path(output_dir, "WAIC_COMPARATIVO.png"),
          geom_col(width = 0.5) + geom_text(aes(label = round(WAIC, 1)), vjust = -0.5, size = 5) +
          scale_fill_manual(values = c("COMPLETO" = "steelblue", "SIMPLIFICADO" = "darkorange")) +
          theme_bw(base_size = 13) + theme(legend.position = "none") +
-         labs(title = "WAIC: COMPLETO vs SIMPLIFICADO - M6", subtitle = paste("ΔWAIC =", round(resumo$WAIC[1] - resumo$WAIC[2], 1)), y = "WAIC"),
+         labs(title = "WAIC: COMPLETO vs SIMPLIFICADO - M9", subtitle = paste("ΔWAIC =", round(resumo$WAIC[1] - resumo$WAIC[2], 1)), y = "WAIC"),
        width = 6, height = 6)
 
 cat(sprintf("\n>>> EXECUÇÃO COMPLETA DO SCRIPT TERMINADA EM: %.2f minutos <<<\n", 

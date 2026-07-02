@@ -1,0 +1,1006 @@
+---
+title: "Modelagem Bayesiana Espaco-Temporal da Mortalidade Neonatal Precoce em Minas Gerais"
+subtitle: "Relatorio de Resultados -- M4, M5, M8 e Analise por Microrregiao (BH e Aracuai)"
+author: "Vinicius Lara"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+    latex_engine: xelatex
+    keep_tex: false
+    fig_caption: true
+    fig_width: 7
+    fig_height: 4.5
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{float}
+  - \usepackage{colortbl}
+  - \usepackage{xcolor}
+  - \usepackage{caption}
+  - \usepackage{fontspec}
+  - \setmainfont{Arial}
+  - \setsansfont{Arial}
+  - \setmonofont{Courier New}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo       = FALSE,
+  message    = FALSE,
+  warning    = FALSE,
+  fig.align  = "center",
+  fig.pos    = "H",
+  out.width  = "95%",
+  fig.width  = 7,
+  fig.height = 4.5
+)
+
+# DEVE vir antes de library(kableExtra) para evitar injecao de tabu.sty
+options(kableExtra.latex.load_packages = FALSE)
+
+pkgs <- c("dplyr", "tidyr", "readr", "ggplot2", "knitr",
+          "kableExtra", "stringr", "tibble", "purrr")
+invisible(lapply(pkgs, library, character.only = TRUE))
+
+
+# Hook: remove pacotes descontinuados que kableExtra injeta no .tex
+# (tabu, threeparttable, threeparttablex, makecell — ausentes no MiKTeX recente)
+knitr::knit_hooks$set(document = function(x) {
+  x <- gsub("\\\\usepackage\\{tabu\\}\\n?",           "", x)
+  x <- gsub("\\\\usepackage\\{threeparttable\\}\\n?",  "", x)
+  x <- gsub("\\\\usepackage\\{threeparttablex\\}\\n?", "", x)
+  x <- gsub("\\\\usepackage\\{makecell\\}\\n?",        "", x)
+  x
+})
+
+# ── Caminhos raiz ─────────────────────────────────────────────────────────────
+BASE <- "C:/Users/vlara/OneDrive/Estatistica UFMG/Mestrado/Pesquisa/Aplicacao"
+
+dirs <- list(
+  M4  = file.path(BASE, "resultados_gamma_temporal"),
+  M5  = file.path(BASE, "resultados_intercepto_temporal_gamma_t"),
+  M8  = file.path(BASE, "resultados_delta_temporal_gamma_t"),
+  UNI = file.path(BASE, "resultados_dinamico_BH_ARACUAI")
+)
+
+SCENARIOS <- c("spatial", "non_spatial")
+REGIONS   <- c("BH", "ARACUAI")
+K         <- 4L
+
+# ── safe_read ─────────────────────────────────────────────────────────────────
+safe_read <- function(...) {
+  path <- file.path(...)
+  if (file.exists(path)) read_csv(path, show_col_types = FALSE) else NULL
+}
+
+# ── norm_cols: unifica variantes de nomes de colunas ─────────────────────────
+norm_cols <- function(df) {
+  if (is.null(df)) return(NULL)
+  pairs <- list(
+    c("Lower",     "HPD_Lower"),
+    c("Upper",     "HPD_Upper"),
+    c("lower",     "Lower"),
+    c("upper",     "Upper"),
+    c("hpd_lower", "HPD_Lower"),
+    c("hpd_upper", "HPD_Upper")
+  )
+  for (p in pairs) {
+    src <- p[1]; tgt <- p[2]
+    if (src %in% names(df) && !tgt %in% names(df))
+      df <- rename(df, !!tgt := !!sym(src))
+  }
+  df
+}
+
+# ── safe_select: select apenas de colunas que existirem ──────────────────────
+safe_select <- function(df, ...) {
+  if (is.null(df)) return(NULL)
+  cols <- intersect(c(...), names(df))
+  if (length(cols) == 0) return(df)
+  select(df, all_of(cols))
+}
+
+# ── tbl_pdf: tabela kable para PDF ────────────────────────────────────────────
+tbl_pdf <- function(df, caption = "", digits = 3) {
+  if (is.null(df) || nrow(df) == 0)
+    return(kable(data.frame(Aviso = "Arquivo nao encontrado ou vazio."),
+                 caption = caption, booktabs = TRUE))
+  df %>%
+    mutate(across(where(is.numeric), ~ round(.x, digits))) %>%
+    kable(caption = caption, booktabs = TRUE, longtable = TRUE, linesep = "") %>%
+    kable_styling(latex_options = c("striped","repeat_header","hold_position"),
+                  font_size = 8, full_width = TRUE)
+}
+
+# ── flag_diag_pdf: realca Rhat > 1.1 e ESS < 100 em vermelho ─────────────────
+flag_diag_pdf <- function(df) {
+  if (is.null(df)) return(NULL)
+  if ("Rhat" %in% names(df))
+    df <- df %>% mutate(
+      Rhat = cell_spec(round(Rhat, 3), format = "latex",
+                       color = ifelse(!is.na(Rhat) & Rhat > 1.1, "red", "black")))
+  if ("ESS" %in% names(df))
+    df <- df %>% mutate(
+      ESS = cell_spec(round(ESS, 1), format = "latex",
+                      color = ifelse(!is.na(ESS) & ESS < 100, "red", "black")))
+  df
+}
+
+# ── fig_pdf: include_graphics se existir, mensagem se nao existir ─────────────
+# IMPORTANTE: nao usar dentro de loops com results='asis' em PDF.
+# Para loops de figuras em PDF use knitr::include_graphics diretamente
+# em chunks separados. Esta funcao e segura em chunks individuais.
+fig_pdf <- function(dir, file) {
+  path <- normalizePath(file.path(dir, file), winslash = "/", mustWork = FALSE)
+  if (file.exists(path)) {
+    knitr::include_graphics(path)
+  } else {
+    message(sprintf("Figura nao encontrada: %s", path))
+    invisible(NULL)
+  }
+}
+
+# ── acf_gamma_figs: retorna data frame com paths de ACF de gamma por cluster ──
+acf_gamma_paths <- function(model_dir, k_val) {
+  list(
+    sp = normalizePath(file.path(model_dir, "spatial",
+                                 sprintf("acf_gamma_k%d.png", k_val)),
+                       winslash = "/", mustWork = FALSE),
+    ns = normalizePath(file.path(model_dir, "non_spatial",
+                                 sprintf("acf_gamma_k%d.png", k_val)),
+                       winslash = "/", mustWork = FALSE)
+  )
+}
+
+# ── helpers de tabela por modelo ──────────────────────────────────────────────
+beta_tab <- function(model_dir, caption) {
+  map_dfr(SCENARIOS, function(sc) {
+    r <- safe_read(model_dir, sc, "beta_summary.csv")
+    if (is.null(r)) return(NULL)
+    norm_cols(r) %>% mutate(Cenario = sc) %>%
+      safe_select(c("Cenario","Parameter","Mean","SD",
+                    "HPD_Lower","HPD_Upper","ESS","Rhat"))
+  }) %>% flag_diag_pdf() %>% tbl_pdf(caption = caption)
+}
+
+lambda_tab <- function(model_dir, caption, digits = 4) {
+  map_dfr(SCENARIOS, function(sc) {
+    r <- safe_read(model_dir, sc, "lambda_summary.csv")
+    if (is.null(r)) return(NULL)
+    norm_cols(r) %>% mutate(Cenario = sc) %>%
+      safe_select(c("Cenario","Time","Mean","SD","Lower","Upper","ESS","Rhat"))
+  }) %>% flag_diag_pdf() %>% tbl_pdf(caption = caption, digits = digits)
+}
+
+gamma_diag_tab <- function(model_dir, caption) {
+  map_dfr(SCENARIOS, function(sc) {
+    r <- safe_read(model_dir, sc, "gamma_summary.csv")
+    if (is.null(r)) return(NULL)
+    r %>% group_by(k) %>%
+      summarise(`ESS min`  = min(ESS,  na.rm = TRUE),
+                `ESS med`  = mean(ESS, na.rm = TRUE),
+                `Rhat max` = max(Rhat, na.rm = TRUE),
+                .groups = "drop") %>%
+      mutate(Cenario = sc, .before = k)
+  }) %>% flag_diag_pdf() %>% tbl_pdf(caption = caption)
+}
+
+uni_tab <- function(region_dir, file, wanted_cols, caption, digits = 3) {
+  r <- safe_read(region_dir, file)
+  if (is.null(r)) return(tbl_pdf(NULL, caption = caption))
+  norm_cols(r) %>% safe_select(wanted_cols) %>%
+    flag_diag_pdf() %>% tbl_pdf(caption = caption, digits = digits)
+}
+
+# ── tema ggplot para PDF (sem Unicode nos labels) ─────────────────────────────
+theme_pdf <- function() {
+  theme_bw(base_size = 9) +
+    theme(legend.position = "bottom",
+          legend.key.size = unit(0.4, "cm"),
+          legend.text     = element_text(size = 7),
+          strip.text      = element_text(size = 7),
+          axis.text       = element_text(size = 7),
+          axis.text.x     = element_text(angle = 45, hjust = 1),
+          plot.title      = element_text(size = 9, face = "bold"),
+          plot.subtitle   = element_text(size = 7))
+}
+```
+
+\newpage
+
+# Visao Geral dos Modelos
+
+```{r resumo-geral}
+resumo_all <- map2_dfr(
+  list(dirs$M4, dirs$M5, dirs$M8), c("M4","M5","M8"),
+  function(d, nm) {
+    r <- safe_read(d, "resumo_comparativo.csv")
+    if (!is.null(r)) mutate(r, Modelo = nm) else NULL
+  }
+)
+
+if (nrow(resumo_all) > 0) {
+  col_rename <- c(Cenario      = "model",
+                  `ESS b min`  = "ESS_beta_min",
+                  `ESS g min`  = "ESS_gamma_min",
+                  `ESS l min`  = "ESS_lambda_min",
+                  `Rhat b max` = "Rhat_beta_max",
+                  `Rhat l max` = "Rhat_lambda_max",
+                  `Rhat g max` = "Rhat_gamma_max",
+                  `lag 0.10`   = "lag_max_0.10",
+                  `lag 0.05`   = "lag_max_0.05")
+  for (tgt in names(col_rename)) {
+    src <- col_rename[[tgt]]
+    if (src %in% names(resumo_all) && !tgt %in% names(resumo_all))
+      resumo_all <- rename(resumo_all, !!tgt := !!sym(src))
+  }
+  resumo_all %>%
+    mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+    kable(caption = "Resumo comparativo -- M4, M5, M8",
+          booktabs = TRUE, longtable = TRUE, linesep = "") %>%
+    kable_styling(latex_options = c("striped","repeat_header","scale_down"),
+                  font_size = 7, full_width = TRUE)
+} else {
+  cat("> resumo\\_comparativo.csv nao encontrado.")
+}
+```
+
+\newpage
+
+# Modelo M4 -- gamma[k,t] Uniforme
+
+**Estrutura:**
+$\log\mu_{it} = \log\lambda_t + \log E_{it} + \log\varepsilon_{it}
++ \boldsymbol{\beta}^\top \mathbf{x}_{it} + s_i$,
+com $\varepsilon_{it} = 1 - \sum_k h_{ik}\,\gamma_{kt}$,
+$\gamma_{1t} \sim \text{Unif}(0;\,0{,}1)$,
+$\gamma_{jt} \sim \text{Unif}(0;\,1-\sum_{l<j}\gamma_{lt})$,
+$\lambda_t$ via FFBS com $w = 0{,}9$.
+
+```{r m4-setup}
+m4 <- dirs$M4
+```
+
+## Criterios de Selecao
+
+```{r m4-criterios}
+map_dfr(SCENARIOS, function(sc) {
+  r <- safe_read(m4, sc, "criteria.csv")
+  if (!is.null(r)) mutate(r, Cenario = sc) else NULL
+}) %>% safe_select(c("Cenario","WAIC","LPML","lppd","pWAIC")) %>%
+  tbl_pdf(caption = "M4 -- WAIC e LPML por cenario")
+```
+
+## Parametros beta
+
+```{r m4-beta}
+beta_tab(m4, "M4 -- Sumario posterior de beta")
+```
+
+```{r m4-beta-trace-sp, fig.cap="M4 spatial -- Traceplots beta"}
+fig_pdf(file.path(m4, "spatial"), "traceplots_beta.png")
+```
+
+```{r m4-beta-trace-ns, fig.cap="M4 non-spatial -- Traceplots beta"}
+fig_pdf(file.path(m4, "non_spatial"), "traceplots_beta.png")
+```
+
+## Intercepto Temporal lambda[t]
+
+```{r m4-lambda-tab}
+lambda_tab(m4, "M4 -- Sumario posterior de lambda[t]")
+```
+
+```{r m4-lambda-comp, fig.cap="M4 -- Comparativo lambda[t]"}
+fig_pdf(m4, "lambda_comparativo.png")
+```
+
+```{r m4-lambda-acf-sp, fig.cap="M4 spatial -- ACF lambda[t]", fig.height=6}
+fig_pdf(file.path(m4, "spatial"), "acf_lambda.png")
+```
+
+```{r m4-lambda-acf-ns, fig.cap="M4 non-spatial -- ACF lambda[t]", fig.height=6}
+fig_pdf(file.path(m4, "non_spatial"), "acf_lambda.png")
+```
+
+## Probabilidade de Notificacao gamma[k,t]
+
+```{r m4-gamma-comp, fig.cap="M4 -- Trajetorias de gamma[k,t]", fig.height=5}
+fig_pdf(m4, "gamma_comparativo.png")
+```
+
+```{r m4-gamma-diag}
+gamma_diag_tab(m4, "M4 -- Diagnosticos de gamma[k,t] por cluster k")
+```
+
+### ACF gamma[k,t] -- cluster k=1
+
+```{r m4-acf-g1-sp, fig.cap="M4 spatial -- ACF gamma[1,t]", fig.height=6}
+fig_pdf(file.path(m4, "spatial"), "acf_gamma_k1.png")
+```
+```{r m4-acf-g1-ns, fig.cap="M4 non-spatial -- ACF gamma[1,t]", fig.height=6}
+fig_pdf(file.path(m4, "non_spatial"), "acf_gamma_k1.png")
+```
+
+### ACF gamma[k,t] -- cluster k=2
+
+```{r m4-acf-g2-sp, fig.cap="M4 spatial -- ACF gamma[2,t]", fig.height=6}
+fig_pdf(file.path(m4, "spatial"), "acf_gamma_k2.png")
+```
+```{r m4-acf-g2-ns, fig.cap="M4 non-spatial -- ACF gamma[2,t]", fig.height=6}
+fig_pdf(file.path(m4, "non_spatial"), "acf_gamma_k2.png")
+```
+
+### ACF gamma[k,t] -- cluster k=3
+
+```{r m4-acf-g3-sp, fig.cap="M4 spatial -- ACF gamma[3,t]", fig.height=6}
+fig_pdf(file.path(m4, "spatial"), "acf_gamma_k3.png")
+```
+```{r m4-acf-g3-ns, fig.cap="M4 non-spatial -- ACF gamma[3,t]", fig.height=6}
+fig_pdf(file.path(m4, "non_spatial"), "acf_gamma_k3.png")
+```
+
+### ACF gamma[k,t] -- cluster k=4
+
+```{r m4-acf-g4-sp, fig.cap="M4 spatial -- ACF gamma[4,t]", fig.height=6}
+fig_pdf(file.path(m4, "spatial"), "acf_gamma_k4.png")
+```
+```{r m4-acf-g4-ns, fig.cap="M4 non-spatial -- ACF gamma[4,t]", fig.height=6}
+fig_pdf(file.path(m4, "non_spatial"), "acf_gamma_k4.png")
+```
+
+## Sub-registro epsilon[k,t]
+
+```{r m4-eps-comp, fig.cap="M4 -- epsilon[k,t] por cluster", fig.height=5}
+fig_pdf(m4, "epsilon_comparativo.png")
+```
+
+## Risco Relativo theta e Contagem Esperada mu
+
+```{r m4-theta-comp, fig.cap="M4 -- Comparativo theta[i,t]", fig.height=7}
+fig_pdf(m4, "theta_comparativo.png")
+```
+
+```{r m4-mu-comp, fig.cap="M4 -- Comparativo mu[i,t]", fig.height=7}
+fig_pdf(m4, "mu_comparativo.png")
+```
+
+## Efeito Espacial s[i]
+
+```{r m4-tau}
+r <- safe_read(m4, "spatial", "tau_summary.csv")
+tbl_pdf(r, caption = "M4 spatial -- Sumario posterior de tau_s")
+```
+
+```{r m4-s, fig.cap="M4 spatial -- Efeito espacial s[i] (IC 95pct HPD)"}
+fig_pdf(file.path(m4, "spatial"), "s_posterior.png")
+```
+
+\newpage
+
+# Modelo M5 -- gamma[k,t] Proporcional
+
+**Estrutura:** igual a M4 com $\gamma_{kt} = \gamma_{k1} \cdot \kappa_t$.
+
+```{r m5-setup}
+m5 <- dirs$M5
+```
+
+## Criterios de Selecao
+
+```{r m5-criterios}
+map_dfr(SCENARIOS, function(sc) {
+  r <- safe_read(m5, sc, "criteria.csv")
+  if (!is.null(r)) mutate(r, Cenario = sc) else NULL
+}) %>% safe_select(c("Cenario","WAIC","LPML","lppd","pWAIC")) %>%
+  tbl_pdf(caption = "M5 -- WAIC e LPML por cenario")
+```
+
+## Parametros beta
+
+```{r m5-beta}
+beta_tab(m5, "M5 -- Sumario posterior de beta")
+```
+
+```{r m5-beta-trace-sp, fig.cap="M5 spatial -- Traceplots beta"}
+fig_pdf(file.path(m5, "spatial"), "traceplots_beta.png")
+```
+
+```{r m5-beta-trace-ns, fig.cap="M5 non-spatial -- Traceplots beta"}
+fig_pdf(file.path(m5, "non_spatial"), "traceplots_beta.png")
+```
+
+## Intercepto Temporal lambda[t]
+
+```{r m5-lambda-tab}
+lambda_tab(m5, "M5 -- Sumario posterior de lambda[t]")
+```
+
+```{r m5-lambda-comp, fig.cap="M5 -- Comparativo lambda[t]"}
+fig_pdf(m5, "lambda_comparativo.png")
+```
+
+```{r m5-lambda-acf-sp, fig.cap="M5 spatial -- ACF lambda[t]", fig.height=6}
+fig_pdf(file.path(m5, "spatial"), "acf_lambda.png")
+```
+
+```{r m5-lambda-acf-ns, fig.cap="M5 non-spatial -- ACF lambda[t]", fig.height=6}
+fig_pdf(file.path(m5, "non_spatial"), "acf_lambda.png")
+```
+
+## gamma[k,t] e kappa_t
+
+```{r m5-gamma-comp, fig.cap="M5 -- Trajetorias de gamma[k,t]", fig.height=5}
+fig_pdf(m5, "gamma_comparativo.png")
+```
+
+```{r m5-gamma-diag}
+gamma_diag_tab(m5, "M5 -- Diagnosticos de gamma[k,t] por cluster k")
+```
+
+### ACF gamma[k,t] -- cluster k=1
+
+```{r m5-acf-g1-sp, fig.cap="M5 spatial -- ACF gamma[1,t]", fig.height=6}
+fig_pdf(file.path(m5, "spatial"), "acf_gamma_k1.png")
+```
+```{r m5-acf-g1-ns, fig.cap="M5 non-spatial -- ACF gamma[1,t]", fig.height=6}
+fig_pdf(file.path(m5, "non_spatial"), "acf_gamma_k1.png")
+```
+
+### ACF gamma[k,t] -- cluster k=2
+
+```{r m5-acf-g2-sp, fig.cap="M5 spatial -- ACF gamma[2,t]", fig.height=6}
+fig_pdf(file.path(m5, "spatial"), "acf_gamma_k2.png")
+```
+```{r m5-acf-g2-ns, fig.cap="M5 non-spatial -- ACF gamma[2,t]", fig.height=6}
+fig_pdf(file.path(m5, "non_spatial"), "acf_gamma_k2.png")
+```
+
+### ACF gamma[k,t] -- cluster k=3
+
+```{r m5-acf-g3-sp, fig.cap="M5 spatial -- ACF gamma[3,t]", fig.height=6}
+fig_pdf(file.path(m5, "spatial"), "acf_gamma_k3.png")
+```
+```{r m5-acf-g3-ns, fig.cap="M5 non-spatial -- ACF gamma[3,t]", fig.height=6}
+fig_pdf(file.path(m5, "non_spatial"), "acf_gamma_k3.png")
+```
+
+### ACF gamma[k,t] -- cluster k=4
+
+```{r m5-acf-g4-sp, fig.cap="M5 spatial -- ACF gamma[4,t]", fig.height=6}
+fig_pdf(file.path(m5, "spatial"), "acf_gamma_k4.png")
+```
+```{r m5-acf-g4-ns, fig.cap="M5 non-spatial -- ACF gamma[4,t]", fig.height=6}
+fig_pdf(file.path(m5, "non_spatial"), "acf_gamma_k4.png")
+```
+
+## Sub-registro epsilon[k,t]
+
+```{r m5-eps-comp, fig.cap="M5 -- epsilon[k,t] por cluster", fig.height=5}
+fig_pdf(m5, "epsilon_comparativo.png")
+```
+
+## Risco Relativo theta e Contagem Esperada mu
+
+```{r m5-theta-comp, fig.cap="M5 -- Comparativo theta[i,t]", fig.height=7}
+fig_pdf(m5, "theta_comparativo.png")
+```
+
+```{r m5-mu-comp, fig.cap="M5 -- Comparativo mu[i,t]", fig.height=7}
+fig_pdf(m5, "mu_comparativo.png")
+```
+
+## Efeito Espacial s[i]
+
+```{r m5-tau}
+r <- safe_read(m5, "spatial", "tau_summary.csv")
+tbl_pdf(r, caption = "M5 spatial -- Sumario posterior de tau_s")
+```
+
+```{r m5-s, fig.cap="M5 spatial -- Efeito espacial s[i]"}
+fig_pdf(file.path(m5, "spatial"), "s_posterior.png")
+```
+
+\newpage
+
+# Modelo M8 -- Prior Gama para lambda[t]
+
+**Estrutura:** igual a M4 na parametrizacao de $\gamma_{kt}$, mas com
+priori **Gama** para $\lambda_t$ (conjugacao exata no passo de atualizacao).
+
+```{r m8-setup}
+m8 <- dirs$M8
+```
+
+## Criterios de Selecao
+
+```{r m8-criterios}
+map_dfr(SCENARIOS, function(sc) {
+  r <- safe_read(m8, sc, "criteria.csv")
+  if (!is.null(r)) mutate(r, Cenario = sc) else NULL
+}) %>% safe_select(c("Cenario","WAIC","LPML","lppd","pWAIC")) %>%
+  tbl_pdf(caption = "M8 -- WAIC e LPML por cenario")
+```
+
+## Parametros beta
+
+```{r m8-beta}
+beta_tab(m8, "M8 -- Sumario posterior de beta")
+```
+
+```{r m8-beta-trace-sp, fig.cap="M8 spatial -- Traceplots beta"}
+fig_pdf(file.path(m8, "spatial"), "traceplots_beta.png")
+```
+
+```{r m8-beta-trace-ns, fig.cap="M8 non-spatial -- Traceplots beta"}
+fig_pdf(file.path(m8, "non_spatial"), "traceplots_beta.png")
+```
+
+## Intercepto Temporal lambda[t]
+
+```{r m8-lambda-tab}
+lambda_tab(m8, "M8 -- Sumario posterior de lambda[t]")
+```
+
+```{r m8-lambda-comp, fig.cap="M8 -- Comparativo lambda[t]"}
+fig_pdf(m8, "lambda_comparativo.png")
+```
+
+```{r m8-lambda-acf-sp, fig.cap="M8 spatial -- ACF lambda[t]", fig.height=6}
+fig_pdf(file.path(m8, "spatial"), "acf_lambda.png")
+```
+
+```{r m8-lambda-acf-ns, fig.cap="M8 non-spatial -- ACF lambda[t]", fig.height=6}
+fig_pdf(file.path(m8, "non_spatial"), "acf_lambda.png")
+```
+
+## gamma[k,t]
+
+```{r m8-gamma-comp, fig.cap="M8 -- Trajetorias de gamma[k,t]", fig.height=5}
+fig_pdf(m8, "gamma_comparativo.png")
+```
+
+```{r m8-gamma-diag}
+gamma_diag_tab(m8, "M8 -- Diagnosticos de gamma[k,t] por cluster k")
+```
+
+### ACF gamma[k,t] -- cluster k=1
+
+```{r m8-acf-g1-sp, fig.cap="M8 spatial -- ACF gamma[1,t]", fig.height=6}
+fig_pdf(file.path(m8, "spatial"), "acf_gamma_k1.png")
+```
+```{r m8-acf-g1-ns, fig.cap="M8 non-spatial -- ACF gamma[1,t]", fig.height=6}
+fig_pdf(file.path(m8, "non_spatial"), "acf_gamma_k1.png")
+```
+
+### ACF gamma[k,t] -- cluster k=2
+
+```{r m8-acf-g2-sp, fig.cap="M8 spatial -- ACF gamma[2,t]", fig.height=6}
+fig_pdf(file.path(m8, "spatial"), "acf_gamma_k2.png")
+```
+```{r m8-acf-g2-ns, fig.cap="M8 non-spatial -- ACF gamma[2,t]", fig.height=6}
+fig_pdf(file.path(m8, "non_spatial"), "acf_gamma_k2.png")
+```
+
+### ACF gamma[k,t] -- cluster k=3
+
+```{r m8-acf-g3-sp, fig.cap="M8 spatial -- ACF gamma[3,t]", fig.height=6}
+fig_pdf(file.path(m8, "spatial"), "acf_gamma_k3.png")
+```
+```{r m8-acf-g3-ns, fig.cap="M8 non-spatial -- ACF gamma[3,t]", fig.height=6}
+fig_pdf(file.path(m8, "non_spatial"), "acf_gamma_k3.png")
+```
+
+### ACF gamma[k,t] -- cluster k=4
+
+```{r m8-acf-g4-sp, fig.cap="M8 spatial -- ACF gamma[4,t]", fig.height=6}
+fig_pdf(file.path(m8, "spatial"), "acf_gamma_k4.png")
+```
+```{r m8-acf-g4-ns, fig.cap="M8 non-spatial -- ACF gamma[4,t]", fig.height=6}
+fig_pdf(file.path(m8, "non_spatial"), "acf_gamma_k4.png")
+```
+
+## Sub-registro epsilon[k,t]
+
+```{r m8-eps-comp, fig.cap="M8 -- epsilon[k,t] por cluster", fig.height=5}
+fig_pdf(m8, "epsilon_comparativo.png")
+```
+
+## Risco Relativo theta e Contagem Esperada mu
+
+```{r m8-theta-comp, fig.cap="M8 -- Comparativo theta[i,t]", fig.height=7}
+fig_pdf(m8, "theta_comparativo.png")
+```
+
+```{r m8-mu-comp, fig.cap="M8 -- Comparativo mu[i,t]", fig.height=7}
+fig_pdf(m8, "mu_comparativo.png")
+```
+
+## Efeito Espacial s[i]
+
+```{r m8-tau}
+r <- safe_read(m8, "spatial", "tau_summary.csv")
+tbl_pdf(r, caption = "M8 spatial -- Sumario posterior de tau_s")
+```
+
+```{r m8-s, fig.cap="M8 spatial -- Efeito espacial s[i]"}
+fig_pdf(file.path(m8, "spatial"), "s_posterior.png")
+```
+
+\newpage
+
+# Comparativo Geral M4 / M5 / M8
+
+## lambda[t] -- os tres modelos
+
+```{r comp-lambda, fig.cap="Comparativo de lambda[t] -- M4, M5 e M8"}
+lambda_comp <- map2_dfr(
+  list(dirs$M4, dirs$M5, dirs$M8), c("M4","M5","M8"),
+  function(d, nm) {
+    map_dfr(SCENARIOS, function(sc) {
+      r <- safe_read(d, sc, "lambda_summary.csv")
+      if (!is.null(r)) mutate(norm_cols(r), Modelo = nm, Cenario = sc) else NULL
+    })
+  }
+)
+
+if (nrow(lambda_comp) > 0) {
+  lo <- if ("Lower"     %in% names(lambda_comp)) "Lower"     else "HPD_Lower"
+  hi <- if ("Upper"     %in% names(lambda_comp)) "Upper"     else "HPD_Upper"
+  ggplot(lambda_comp,
+         aes(x = Time, y = Mean, color = Modelo, fill = Modelo,
+             linetype = Cenario)) +
+    geom_ribbon(aes(ymin = .data[[lo]], ymax = .data[[hi]]),
+                alpha = 0.10, color = NA) +
+    geom_line(linewidth = 0.7) +
+    scale_linetype_manual(
+      values = c("spatial" = "solid", "non_spatial" = "dashed")) +
+    scale_x_continuous(breaks = seq(1, 23, 4), labels = seq(2000, 2022, 4)) +
+    theme_pdf() +
+    labs(x = "Ano", y = "lambda[t]",
+         color = "Modelo", fill = "Modelo", linetype = "Cenario")
+} else {
+  cat("> Dados de lambda[t] nao encontrados.")
+}
+```
+
+## beta -- os tres modelos
+
+```{r comp-beta, fig.cap="Comparativo de beta -- M4, M5 e M8", fig.height=4}
+beta_comp <- map2_dfr(
+  list(dirs$M4, dirs$M5, dirs$M8), c("M4","M5","M8"),
+  function(d, nm) {
+    map_dfr(SCENARIOS, function(sc) {
+      r <- safe_read(d, sc, "beta_summary.csv")
+      if (!is.null(r)) mutate(norm_cols(r), Modelo = nm, Cenario = sc) else NULL
+    })
+  }
+)
+
+if (nrow(beta_comp) > 0) {
+  lo <- if ("HPD_Lower" %in% names(beta_comp)) "HPD_Lower" else "Lower"
+  hi <- if ("HPD_Upper" %in% names(beta_comp)) "HPD_Upper" else "Upper"
+  ggplot(beta_comp,
+         aes(x = interaction(Modelo, Cenario), y = Mean,
+             color = Modelo, shape = Cenario)) +
+    geom_pointrange(aes(ymin = .data[[lo]], ymax = .data[[hi]]),
+                    position = position_dodge(width = 0.6),
+                    linewidth = 0.5, size = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+    facet_wrap(~ Parameter, scales = "free_y", ncol = 3) +
+    theme_pdf() +
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+    labs(x = NULL, y = "Valor", color = "Modelo", shape = "Cenario")
+} else {
+  cat("> Dados de beta nao encontrados.")
+}
+```
+
+## WAIC e LPML -- resumo final
+
+```{r comp-criterios}
+crit_comp_raw <- map2_dfr(
+  list(dirs$M4, dirs$M5, dirs$M8), c("M4","M5","M8"),
+  function(d, nm) {
+    map_dfr(SCENARIOS, function(sc) {
+      r <- safe_read(d, sc, "criteria.csv")
+      if (!is.null(r)) mutate(r, Modelo = nm, Cenario = sc) else NULL
+    })
+  }
+)
+
+if (!is.null(crit_comp_raw) && nrow(crit_comp_raw) > 0) {
+  crit_comp <- crit_comp_raw %>%
+    safe_select(c("Modelo","Cenario","WAIC","LPML","lppd","pWAIC"))
+  # so ordena se a coluna WAIC existir apos o safe_select
+  if ("WAIC" %in% names(crit_comp))
+    crit_comp <- arrange(crit_comp, WAIC)
+  crit_comp %>%
+    mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+    kable(caption  = "Criterios de selecao -- M4, M5, M8 (WAIC crescente)",
+          booktabs = TRUE, longtable = TRUE, linesep = "") %>%
+    kable_styling(latex_options = c("striped","repeat_header","hold_position"),
+                  font_size = 9, full_width = FALSE) %>%
+    row_spec(1, bold = TRUE)
+} else {
+  cat("> criteria.csv nao encontrado para nenhum modelo.")
+}
+```
+
+\newpage
+
+# Analise por Microrregiao -- BH e Aracuai
+
+Modelos dinamicos univariados com $\varepsilon_t$ marginal, sem efeito espacial.
+Priori: BH $\varepsilon_t \sim \text{Unif}(0{,}95;\,1{,}00)$;
+Aracuai $\varepsilon_t \sim \text{Unif}(0{,}75;\,0{,}85)$.
+
+```{r uni-setup}
+uni <- dirs$UNI
+```
+
+## Resumo Geral
+
+```{r uni-resumo}
+r <- safe_read(uni, "resumo_comparativo.csv")
+tbl_pdf(r, caption = "BH e Aracuai -- Resumo diagnostico e criterios")
+```
+
+## BH -- Belo Horizonte / Nova Lima / Caete
+
+```{r uni-bh-crit}
+r <- safe_read(uni, "BH", "criteria.csv")
+tbl_pdf(r, caption = "BH -- WAIC e LPML")
+```
+
+```{r uni-bh-beta}
+uni_tab(file.path(uni,"BH"), "beta_summary.csv",
+        c("Parameter","Mean","SD","HPD_Lower","HPD_Upper","ESS","Rhat"),
+        "BH -- Sumario posterior de beta")
+```
+
+```{r uni-bh-beta-trace, fig.cap="BH -- Traceplots beta"}
+fig_pdf(file.path(uni, "BH"), "traceplots_beta.png")
+```
+
+```{r uni-bh-lambda-tab}
+uni_tab(file.path(uni,"BH"), "lambda_summary.csv",
+        c("Time","Mean","SD","Lower","Upper","ESS","Rhat"),
+        "BH -- Sumario posterior de lambda[t]", digits = 4)
+```
+
+```{r uni-bh-lambda-fig, fig.cap="BH -- Trajetoria de lambda[t]"}
+fig_pdf(file.path(uni, "BH"), "painel_lambda.png")
+```
+
+```{r uni-bh-lambda-acf, fig.cap="BH -- ACF de lambda[t]", fig.height=6}
+fig_pdf(file.path(uni, "BH"), "acf_lambda.png")
+```
+
+```{r uni-bh-epsilon-tab}
+uni_tab(file.path(uni,"BH"), "epsilon_summary.csv",
+        c("Time","Mean","SD","Lower","Upper","ESS","Rhat"),
+        "BH -- Sumario posterior de epsilon[t]", digits = 4)
+```
+
+```{r uni-bh-epsilon-fig, fig.cap="BH -- Trajetoria de epsilon[t]"}
+fig_pdf(file.path(uni, "BH"), "painel_epsilon.png")
+```
+
+```{r uni-bh-epsilon-acf, fig.cap="BH -- ACF de epsilon[t]", fig.height=6}
+fig_pdf(file.path(uni, "BH"), "acf_epsilon.png")
+```
+
+```{r uni-bh-theta, fig.cap="BH -- Risco relativo theta[t]"}
+fig_pdf(file.path(uni, "BH"), "painel_theta.png")
+```
+
+```{r uni-bh-mu, fig.cap="BH -- Contagem esperada mu[t] vs Y observado"}
+fig_pdf(file.path(uni, "BH"), "painel_mu.png")
+```
+
+\newpage
+
+## Aracuai
+
+```{r uni-aracuai-crit}
+r <- safe_read(uni, "ARACUAI", "criteria.csv")
+tbl_pdf(r, caption = "Aracuai -- WAIC e LPML")
+```
+
+```{r uni-aracuai-beta}
+uni_tab(file.path(uni,"ARACUAI"), "beta_summary.csv",
+        c("Parameter","Mean","SD","HPD_Lower","HPD_Upper","ESS","Rhat"),
+        "Aracuai -- Sumario posterior de beta")
+```
+
+```{r uni-aracuai-beta-trace, fig.cap="Aracuai -- Traceplots beta"}
+fig_pdf(file.path(uni, "ARACUAI"), "traceplots_beta.png")
+```
+
+```{r uni-aracuai-lambda-tab}
+uni_tab(file.path(uni,"ARACUAI"), "lambda_summary.csv",
+        c("Time","Mean","SD","Lower","Upper","ESS","Rhat"),
+        "Aracuai -- Sumario posterior de lambda[t]", digits = 4)
+```
+
+```{r uni-aracuai-lambda-fig, fig.cap="Aracuai -- Trajetoria de lambda[t]"}
+fig_pdf(file.path(uni, "ARACUAI"), "painel_lambda.png")
+```
+
+```{r uni-aracuai-lambda-acf, fig.cap="Aracuai -- ACF de lambda[t]", fig.height=6}
+fig_pdf(file.path(uni, "ARACUAI"), "acf_lambda.png")
+```
+
+```{r uni-aracuai-epsilon-tab}
+uni_tab(file.path(uni,"ARACUAI"), "epsilon_summary.csv",
+        c("Time","Mean","SD","Lower","Upper","ESS","Rhat"),
+        "Aracuai -- Sumario posterior de epsilon[t]", digits = 4)
+```
+
+```{r uni-aracuai-epsilon-fig, fig.cap="Aracuai -- Trajetoria de epsilon[t]"}
+fig_pdf(file.path(uni, "ARACUAI"), "painel_epsilon.png")
+```
+
+```{r uni-aracuai-epsilon-acf, fig.cap="Aracuai -- ACF de epsilon[t]", fig.height=6}
+fig_pdf(file.path(uni, "ARACUAI"), "acf_epsilon.png")
+```
+
+```{r uni-aracuai-theta, fig.cap="Aracuai -- Risco relativo theta[t]"}
+fig_pdf(file.path(uni, "ARACUAI"), "painel_theta.png")
+```
+
+```{r uni-aracuai-mu, fig.cap="Aracuai -- Contagem esperada mu[t] vs Y observado"}
+fig_pdf(file.path(uni, "ARACUAI"), "painel_mu.png")
+```
+
+## Comparativo BH vs. Aracuai
+
+```{r uni-comp-lambda, fig.cap="BH vs Aracuai -- lambda[t]"}
+fig_pdf(uni, "lambda_comparativo.png")
+```
+
+```{r uni-comp-epsilon, fig.cap="BH vs Aracuai -- epsilon[t]"}
+fig_pdf(uni, "epsilon_comparativo.png")
+```
+
+```{r uni-comp-theta, fig.cap="BH vs Aracuai -- theta[t]"}
+fig_pdf(uni, "theta_comparativo.png")
+```
+
+```{r uni-comp-mu, fig.cap="BH vs Aracuai -- mu[t] vs Y observado"}
+fig_pdf(uni, "mu_comparativo.png")
+```
+
+```{r uni-comp-overlay, fig.cap="lambda[t] -- BH vs Aracuai (construido via CSV)"}
+lbh <- safe_read(uni, "BH",      "lambda_summary.csv")
+lac <- safe_read(uni, "ARACUAI", "lambda_summary.csv")
+
+if (!is.null(lbh) && !is.null(lac)) {
+  lbh <- norm_cols(lbh); lac <- norm_cols(lac)
+  lo  <- if ("Lower" %in% names(lbh)) "Lower" else "HPD_Lower"
+  hi  <- if ("Upper" %in% names(lbh)) "Upper" else "HPD_Upper"
+  bind_rows(mutate(lbh, Regiao = "BH"),
+            mutate(lac, Regiao = "Aracuai")) %>%
+    ggplot(aes(x = Time, y = Mean, color = Regiao, fill = Regiao)) +
+    geom_ribbon(aes(ymin = .data[[lo]], ymax = .data[[hi]]),
+                alpha = 0.15, color = NA) +
+    geom_line(linewidth = 0.8) +
+    scale_x_continuous(breaks = seq(1, 23, 4), labels = seq(2000, 2022, 4)) +
+    theme_pdf() +
+    labs(x = "Ano", y = "lambda[t]",
+         color = "Microrregiao", fill = "Microrregiao")
+} else {
+  cat("> lambda\\_summary.csv nao encontrado para BH e/ou Aracuai.")
+}
+```
+
+\newpage
+
+# Diagnosticos Globais
+
+## Tabela consolidada de ESS e Rhat
+
+```{r diag-global}
+diag_global <- bind_rows(
+  map2_dfr(
+    list(dirs$M4, dirs$M5, dirs$M8), c("M4","M5","M8"),
+    function(d, nm) {
+      map_dfr(SCENARIOS, function(sc) {
+        r <- safe_read(d, sc, "acf_diagnostics.csv")
+        if (!is.null(r)) mutate(r, Modelo = nm, Cenario = sc) else NULL
+      })
+    }
+  ),
+  map_dfr(REGIONS, function(rg) {
+    r <- safe_read(uni, rg, "acf_diagnostics.csv")
+    if (!is.null(r)) mutate(r, Modelo = "Univariado", Cenario = rg) else NULL
+  })
+)
+
+if (nrow(diag_global) > 0) {
+  diag_global %>%
+    group_by(Modelo, Cenario) %>%
+    summarise(`ESS min`     = min(ESS,      na.rm = TRUE),
+              `ESS med`     = mean(ESS,     na.rm = TRUE),
+              `Rhat max`    = max(Rhat,     na.rm = TRUE),
+              `lag0.10 max` = max(lag_0.10, na.rm = TRUE),
+              `lag0.05 max` = max(lag_0.05, na.rm = TRUE),
+              .groups = "drop") %>%
+    mutate(
+      `ESS min`  = cell_spec(round(`ESS min`,  1), format = "latex",
+                              color = ifelse(`ESS min`  < 100,  "red", "black")),
+      `Rhat max` = cell_spec(round(`Rhat max`, 3), format = "latex",
+                              color = ifelse(`Rhat max` > 1.10, "red", "black"))
+    ) %>%
+    kable(caption  = "Diagnosticos globais -- ESS e Rhat por modelo/cenario",
+          booktabs = TRUE, longtable = TRUE, escape = FALSE, linesep = "") %>%
+    kable_styling(latex_options = c("striped","repeat_header","hold_position"),
+                  font_size = 8, full_width = TRUE)
+} else {
+  cat("> acf\\_diagnostics.csv nao encontrado para nenhum modelo/cenario.")
+}
+```
+
+## Distribuicao de ESS por tipo de parametro
+
+```{r diag-ess-dist, fig.cap="Distribuicao do ESS por tipo de parametro", fig.height=4.5}
+if (exists("diag_global") && nrow(diag_global) > 0) {
+  diag_global %>%
+    filter(!is.infinite(ESS), !is.na(ESS)) %>%
+    mutate(Tipo = case_when(
+      str_detect(Parameter, "^beta")    ~ "beta",
+      str_detect(Parameter, "^lambda")  ~ "lambda",
+      str_detect(Parameter, "^gamma")   ~ "gamma",
+      str_detect(Parameter, "^epsilon") ~ "epsilon",
+      str_detect(Parameter, "^tau")     ~ "tau_s",
+      TRUE                              ~ "Outro")) %>%
+    ggplot(aes(x = Tipo, y = ESS, fill = Modelo)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 0.5,
+                 position = position_dodge(0.8)) +
+    geom_hline(yintercept = 100, linetype = "dashed",
+               color = "red", linewidth = 0.5) +
+    facet_wrap(~ Cenario, ncol = 2) +
+    theme_pdf() +
+    labs(x = "Parametro", y = "ESS", fill = "Modelo",
+         subtitle = "Linha vermelha: ESS = 100")
+}
+```
+
+## Distribuicao de Rhat por tipo de parametro
+
+```{r diag-rhat-dist, fig.cap="Distribuicao do Rhat por tipo de parametro", fig.height=4.5}
+if (exists("diag_global") && nrow(diag_global) > 0) {
+  diag_global %>%
+    filter(!is.na(Rhat), is.finite(Rhat)) %>%
+    mutate(Tipo = case_when(
+      str_detect(Parameter, "^beta")    ~ "beta",
+      str_detect(Parameter, "^lambda")  ~ "lambda",
+      str_detect(Parameter, "^gamma")   ~ "gamma",
+      str_detect(Parameter, "^epsilon") ~ "epsilon",
+      str_detect(Parameter, "^tau")     ~ "tau_s",
+      TRUE                              ~ "Outro")) %>%
+    ggplot(aes(x = Tipo, y = Rhat, fill = Modelo)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 0.5,
+                 position = position_dodge(0.8)) +
+    geom_hline(yintercept = 1.10, linetype = "dashed",
+               color = "red", linewidth = 0.5) +
+    facet_wrap(~ Cenario, ncol = 2) +
+    theme_pdf() +
+    labs(x = "Parametro", y = "Rhat", fill = "Modelo",
+         subtitle = "Linha vermelha: Rhat = 1.10")
+}
+```
+
+\newpage
+
+# Informacoes da Sessao
+
+```{r sessao}
+sessionInfo()
+```
